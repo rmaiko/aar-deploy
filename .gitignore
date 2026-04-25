@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────
+# aar-deploy — repository content policy
+# ─────────────────────────────────────────────────────────────────────
+# This is a deployable GitHub Pages repo. The ONLY files that may be
+# committed are:
+#   - README.md
+#   - the deployable web app (index.html and any companion .js/.css/asset
+#     files in directories like js/, css/, assets/)
+#   - this .gitignore
+#
+# Everything else — CCCT scaffolding (.claude/, docs/, AGENTS.md,
+# CLAUDE.md, .phase_state.json, cognitive_cookie_cutter_template/,
+# package.json, tsconfig.json, etc.) and OS/IDE cruft — must NEVER be
+# committed. See docs/ccct_deviations.md D-003 for the full policy.
+#
+# Implementation: ignore everything by default, then explicitly unignore
+# the few paths that are part of the deliverable.
+# ─────────────────────────────────────────────────────────────────────
+
+# Ignore everything at the repo root by default.
+/*
+
+# Allow the policy file itself.
+!.gitignore
+
+# Allow the project README.
+!README.md
+
+# Allow the deployable site files (created in Phase 5).
+!index.html
+!js/
+!css/
+!assets/
+!favicon.ico
+!favicon.png
