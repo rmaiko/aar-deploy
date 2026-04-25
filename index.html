@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AAR-DEPLOY — Pre-flight</title>
+  <meta name="description" content="aar-deploy: a fully offline newborn-care tracker. Coming soon." />
+  <style>
+    :root {
+      --bg: #0a0d0a;
+      --panel: #131a13;
+      --fg: #c8e6c9;
+      --accent: #7fff7f;
+      --warn: #ffb84d;
+      --grid: #1f2a1f;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      background:
+        repeating-linear-gradient(0deg, transparent 0 23px, var(--grid) 23px 24px),
+        repeating-linear-gradient(90deg, transparent 0 23px, var(--grid) 23px 24px),
+        var(--bg);
+      color: var(--fg);
+      font-family: var(--mono);
+      display: grid;
+      place-items: center;
+      padding: 2rem;
+    }
+    .panel {
+      max-width: 36rem;
+      width: 100%;
+      padding: 1.75rem 2rem;
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px var(--accent), 0 0 32px rgba(127,255,127,0.15);
+      letter-spacing: 0.02em;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px dashed var(--accent);
+      padding-bottom: 0.6rem;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      color: var(--accent);
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin: 0 0 0.5rem 0;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+    }
+    .sub {
+      font-size: 0.85rem;
+      color: var(--warn);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin: 0 0 1.25rem 0;
+    }
+    p { line-height: 1.55; margin: 0.6rem 0; font-size: 0.95rem; }
+    .footer {
+      margin-top: 1.5rem;
+      padding-top: 0.6rem;
+      border-top: 1px dashed var(--accent);
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.7rem;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    .blink { animation: blink 1.4s step-start infinite; }
+    @keyframes blink { 50% { opacity: 0.25; } }
+  </style>
+</head>
+<body>
+  <main class="panel" role="main">
+    <div class="header">
+      <span>AAR-DEPLOY · LOADMASTER STATION</span>
+      <span class="blink">● STBY</span>
+    </div>
+    <h1>Pre-flight in progress</h1>
+    <p class="sub">Coming soon — refueling boom not yet extended.</p>
+    <p>
+      This site will host a small, fully offline tracker for newborn-care
+      events — feedings, wet diapers, dirty diapers, weight — themed as the
+      console of a military cargo aircraft loadmaster. All data stays on
+      your device.
+    </p>
+    <p>
+      The cockpit is being wired up. Check back shortly.
+    </p>
+    <div class="footer">
+      <span>STA: GROUND</span>
+      <span>v0 · pre-deploy</span>
+    </div>
+  </main>
+</body>
+</html>
