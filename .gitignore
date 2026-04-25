@@ -26,6 +26,9 @@
 # Allow the project README.
 !README.md
 
+# Allow the project license.
+!LICENSE
+
 # Allow the deployable site files (created in Phase 5).
 !index.html
 !js/

@@ -43,5 +43,5 @@ explicitly take (export a CSV, copy a share link).
 
 ## License
 
-Personal project — all rights reserved by the author unless an explicit
-license is added later.
+[Beer-Ware Revision 42](./LICENSE) — do whatever you want with this stuff.
+If we meet some day and you think it was worth it, buy me a beer.
