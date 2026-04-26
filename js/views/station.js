@@ -11,6 +11,8 @@ import { dispatch } from '../state.js';
 import { writeState } from '../storage.js';
 import { predictFeed, predictDiaper } from '../prediction.js';
 import { isEmcon, getImportedState } from '../emcon.js';
+import { navigate } from '../router.js';
+import { ROUTES } from '../config.js';
 import { toast, dialog, banner } from '../overlays.js';
 import { getOffsets, getSelection, setSelection, reset as chipReset, toLocalIso } from '../chip.js';
 import {
@@ -32,6 +34,7 @@ function refresh() {
   mountEl.appendChild(renderChip(theme));
   mountEl.appendChild(renderLastContact(theme, state));
   mountEl.appendChild(renderToday(theme, state));
+  mountEl.appendChild(renderRecent(theme, state));
   mountEl.appendChild(renderNextVector(theme, state));
   mountEl.appendChild(renderDeleteLast(theme, state));
   evaluateBackupBanner(state);
@@ -251,6 +254,57 @@ function renderToday(theme, state) {
   grid.appendChild(badge(t(`today.ordnance.${theme}`), dirty));
   wrap.appendChild(grid);
   return wrap;
+}
+
+// Recent activity panel — shows the events from the last 24h, reverse-
+// chronological, with a tap-through to the full Mission Log.  Helps
+// parents quickly check "what was the last few things logged" without
+// navigating away from the station.
+function renderRecent(theme, state) {
+  const wrap = el('section', { className: 'recent-activity' });
+  wrap.appendChild(el('h2', { text: t(`recent.title.${theme}`) }));
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const recent = state.events
+    .filter((e) => new Date(e.timestamp).getTime() >= cutoff)
+    .slice()
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  if (recent.length === 0) {
+    wrap.appendChild(el('p', { text: t(`recent.empty.${theme}`), style: 'font-size:0.8rem;color:#aac8aa;' }));
+    return wrap;
+  }
+  const list = el('ol', { className: 'recent-list', style: 'list-style:none;padding:0;margin:0.4rem 0;' });
+  for (const ev of recent) list.appendChild(renderRecentEntry(ev, theme));
+  wrap.appendChild(list);
+  if (state.events.length > recent.length) {
+    wrap.appendChild(el('button', {
+      type: 'button',
+      className: 'tap',
+      text: t('recent.viewAll'),
+      style: 'margin-top:0.3rem;font-size:0.8rem;',
+      on: { click: () => navigate(ROUTES.LOG) },
+    }));
+  }
+  return wrap;
+}
+
+function renderRecentEntry(ev, theme) {
+  const li = el('li', { className: 'recent-entry', style: 'display:flex;justify-content:space-between;gap:0.5rem;padding:0.25rem 0;border-bottom:1px solid #1f2a1f;font-size:0.85rem;' });
+  const left = el('span');
+  left.appendChild(el('strong', { text: labelForEvent(ev, theme) }));
+  if (ev.type === 'feed' && ev.durationMin != null) {
+    left.appendChild(document.createTextNode(' · '));
+    left.appendChild(el('span', { text: t('log.entry.duration', { n: ev.durationMin }) }));
+  }
+  if (ev.type === 'weight') {
+    left.appendChild(document.createTextNode(' · '));
+    left.appendChild(el('span', { text: t('log.entry.weightDetail', { kg: ev.weightKg, cm: ev.lengthCm }) }));
+  }
+  li.appendChild(left);
+  const right = el('span', { style: 'color:#aac8aa;font-variant-numeric:tabular-nums;white-space:nowrap;' });
+  const ts = new Date(ev.timestamp);
+  right.textContent = `${formatHm(ts)} · ${relativeTimeString(ts)}`;
+  li.appendChild(right);
+  return li;
 }
 
 function badge(label, n) {

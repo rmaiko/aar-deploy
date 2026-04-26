@@ -126,6 +126,12 @@
   "today.ordnance.themed": "Ordnance",
   "today.ordnance.plain": "Dirty",
 
+  "recent.title.themed": "RECENT TRAFFIC (last 24h)",
+  "recent.title.plain": "Recent activity (last 24h)",
+  "recent.empty.themed": "No traffic in the last 24h.",
+  "recent.empty.plain": "Nothing logged in the last 24h.",
+  "recent.viewAll": "View full mission log",
+
   "vector.title.themed": "NEXT VECTOR",
   "vector.title.plain": "Next predicted",
   "vector.feeding": "Next vector: ~ {time} ± {band} min",
