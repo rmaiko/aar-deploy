@@ -5,6 +5,7 @@ import { getState, dispatch } from '../state.js';
 import { writeState } from '../storage.js';
 import { navigate } from '../router.js';
 import { ROUTES } from '../config.js';
+import { weightLengthCharts } from './charts.js';
 
 let mountEl = null;
 let activeWindow = 'last7';
@@ -105,7 +106,19 @@ function renderReport(state) {
   }
 
   wrap.appendChild(el('h2', { text: t('report.section.weight') }));
-  wrap.appendChild(renderWeightSvg(events));
+  // Use the abacus charts (WHO percentile fan, print palette).  Pass
+  // the windowed events as the subset, but anchor month-0 against the
+  // canonical first event in state so the X axis is consistent across
+  // window choices.
+  const charts = weightLengthCharts(state, { palette: 'print', subset: events });
+  if (charts) {
+    const cwrap = el('div', { style: 'display:flex;flex-direction:column;gap:0.5rem;' });
+    cwrap.appendChild(charts.weightSvg);
+    cwrap.appendChild(charts.lengthSvg);
+    wrap.appendChild(cwrap);
+  } else {
+    wrap.appendChild(renderWeightSvg(events));
+  }
 
   wrap.appendChild(el('h2', { text: t('report.section.daily') }));
   wrap.appendChild(renderDailyTable(events));

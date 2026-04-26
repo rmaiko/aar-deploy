@@ -60,11 +60,29 @@ function svg(name, attrs = {}, children = []) {
   return node;
 }
 
+// Color palettes — 'dark' for the in-app station/log view, 'print'
+// for the Pediatrician Report (FR-129 plain + NFR-29 print fidelity).
+const PALETTES = {
+  dark: {
+    bg: '#0a0d0a', frame: '#2c3a2c', grid: '#1f2a1f',
+    axisLabel: '#aac8aa', title: '#7fff7f',
+    fanMid: '#3a6f3a', fan: '#234023', fanLabel: '#3a6f3a', fanLabelMid: '#7fff7f',
+    data: '#ffb84d', dataStroke: '#0a0d0a',
+  },
+  print: {
+    bg: '#ffffff', frame: '#666', grid: '#dde6dd',
+    axisLabel: '#333', title: '#1f6f1f',
+    fanMid: '#1f6f1f', fan: '#a3c9a3', fanLabel: '#5a805a', fanLabelMid: '#1f6f1f',
+    data: '#b85c00', dataStroke: '#ffffff',
+  },
+};
+
 // Renders one chart.  events: array filtered to one type (weight events
 // for the weight chart) — each must have .timestamp and one of
 // {weightKg, lengthCm}.  field: 'weightKg' | 'lengthCm'. anchorMs: epoch
 // ms representing month 0 on the X axis.
-function renderChart({ title, units, anchors, events, field, anchorMs }) {
+function renderChart({ title, units, anchors, events, field, anchorMs, palette = 'dark' }) {
+  const C = PALETTES[palette] ?? PALETTES.dark;
   // Build the percentile fan.
   const curves = buildCurves(anchors);
 
@@ -92,12 +110,12 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
     height: H,
     role: 'img',
     'aria-label': title,
-    style: 'background:#0a0d0a;border:1px solid #1f2a1f;display:block;',
+    style: `background:${C.bg};border:1px solid ${C.grid};display:block;`,
   });
 
   // Title.
   root.appendChild(svg('text', {
-    x: PAD_L, y: 16, fill: '#7fff7f',
+    x: PAD_L, y: 16, fill: C.title,
     'font-family': 'ui-monospace,Menlo,monospace',
     'font-size': '12', 'letter-spacing': '0.1em',
   }, [textNode(title.toUpperCase())]));
@@ -106,9 +124,9 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
   const yTickStep = niceStep(yMax - yMin);
   for (let v = Math.ceil(yMin); v <= yMax; v += yTickStep) {
     const y = sy(v);
-    root.appendChild(svg('line', { x1: PAD_L, x2: W - PAD_R, y1: y, y2: y, stroke: '#1f2a1f', 'stroke-width': '1' }));
+    root.appendChild(svg('line', { x1: PAD_L, x2: W - PAD_R, y1: y, y2: y, stroke: C.grid, 'stroke-width': '1' }));
     root.appendChild(svg('text', {
-      x: PAD_L - 4, y: y + 3, fill: '#aac8aa', 'text-anchor': 'end',
+      x: PAD_L - 4, y: y + 3, fill: C.axisLabel, 'text-anchor': 'end',
       'font-family': 'ui-monospace,Menlo,monospace', 'font-size': '9',
     }, [textNode(`${v}${units}`)]));
   }
@@ -116,9 +134,9 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
   // X-axis ticks (every 3 months).
   for (let m = 0; m <= MONTHS; m += 3) {
     const x = sx(m);
-    root.appendChild(svg('line', { x1: x, x2: x, y1: PAD_T, y2: H - PAD_B, stroke: '#1f2a1f' }));
+    root.appendChild(svg('line', { x1: x, x2: x, y1: PAD_T, y2: H - PAD_B, stroke: C.grid }));
     root.appendChild(svg('text', {
-      x, y: H - PAD_B + 12, fill: '#aac8aa', 'text-anchor': 'middle',
+      x, y: H - PAD_B + 12, fill: C.axisLabel, 'text-anchor': 'middle',
       'font-family': 'ui-monospace,Menlo,monospace', 'font-size': '9',
     }, [textNode(`${m}m`)]));
   }
@@ -126,7 +144,7 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
   // Frame.
   root.appendChild(svg('rect', {
     x: PAD_L, y: PAD_T, width: innerW, height: innerH,
-    fill: 'none', stroke: '#2c3a2c', 'stroke-width': '1',
+    fill: 'none', stroke: C.frame, 'stroke-width': '1',
   }));
 
   // Percentile fan.
@@ -136,7 +154,7 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
     root.appendChild(svg('polyline', {
       points,
       fill: 'none',
-      stroke: isMid ? '#3a6f3a' : '#234023',
+      stroke: isMid ? C.fanMid : C.fan,
       'stroke-width': isMid ? '1.4' : '0.7',
       'stroke-dasharray': isMid ? '' : '2,2',
     }));
@@ -144,7 +162,7 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
     const last = curves[p][MONTHS];
     root.appendChild(svg('text', {
       x: sx(last.month) + 2, y: sy(last.value) + 3,
-      fill: isMid ? '#7fff7f' : '#3a6f3a',
+      fill: isMid ? C.fanLabelMid : C.fanLabel,
       'font-family': 'ui-monospace,Menlo,monospace', 'font-size': '8',
     }, [textNode(`p${PCT_LABELS[p]}`)]));
   }
@@ -159,13 +177,13 @@ function renderChart({ title, units, anchors, events, field, anchorMs }) {
   if (dataPts.length >= 2) {
     const points = dataPts.map((p) => `${sx(p.m)},${sy(p.v)}`).join(' ');
     root.appendChild(svg('polyline', {
-      points, fill: 'none', stroke: '#ffb84d', 'stroke-width': '1.6',
+      points, fill: 'none', stroke: C.data, 'stroke-width': '1.6',
     }));
   }
   for (const p of dataPts) {
     root.appendChild(svg('circle', {
       cx: sx(p.m), cy: sy(p.v), r: '3.5',
-      fill: '#ffb84d', stroke: '#0a0d0a', 'stroke-width': '1',
+      fill: C.data, stroke: C.dataStroke, 'stroke-width': '1',
     }));
   }
   return root;
@@ -184,11 +202,16 @@ function textNode(s) { return document.createTextNode(s); }
 // Public: build the {weightSvg, lengthSvg} pair for the Mission Log
 // view.  Returns null when there are no weight events at all (chart
 // would be empty / misleading).
-export function weightLengthCharts(state) {
-  const weightEvents = (state.events ?? []).filter((e) => e.type === 'weight');
-  if (weightEvents.length === 0) return null;
+export function weightLengthCharts(state, { palette = 'dark', subset = null } = {}) {
   const allEvents = (state.events ?? []).slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  const anchorMs = allEvents.length ? new Date(allEvents[0].timestamp).getTime() : Date.now();
+  if (allEvents.length === 0) return null;
+  const eventsForChart = subset ?? state.events ?? [];
+  const weightEvents = eventsForChart.filter((e) => e.type === 'weight');
+  if (weightEvents.length === 0) return null;
+  // Anchor month-0 at the very first event in the canonical state, even
+  // when a subset is being charted, so the X axis is meaningful across
+  // re-rendered windows (e.g. last-7d in the report).
+  const anchorMs = new Date(allEvents[0].timestamp).getTime();
   const weightSvg = renderChart({
     title: 'Weight trajectory · WHO percentile fan',
     units: ' kg',
@@ -196,6 +219,7 @@ export function weightLengthCharts(state) {
     events: weightEvents,
     field: 'weightKg',
     anchorMs,
+    palette,
   });
   const lengthSvg = renderChart({
     title: 'Length / height trajectory · WHO percentile fan',
@@ -204,6 +228,7 @@ export function weightLengthCharts(state) {
     events: weightEvents,
     field: 'lengthCm',
     anchorMs,
+    palette,
   });
   return { weightSvg, lengthSvg, anchorMs };
 }
