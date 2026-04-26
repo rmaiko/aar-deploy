@@ -136,3 +136,99 @@ function resolveTimestampOrNow(when) {
 export function getLastEvent(state = getState()) {
   return state.events.length ? state.events[state.events.length - 1] : null;
 }
+
+// ─── Live feeding timer ─────────────────────────────────────────────
+//
+// Stopwatch-style flow: with chip = Now, the FIRST CONTACT tap starts a
+// timer instead of logging.  The next CONTACT tap (any side) stops the
+// timer and logs the feed with duration = elapsed minutes and
+// timestamp = start time.
+//
+// Module-scoped — not persisted across reload.  If the user closes the
+// tab mid-feed the in-progress timer is lost; the chip and other
+// fallbacks still let them log it after the fact.
+
+let activeFeedTimer = null;
+const timerSubs = new Set();
+
+function notifyTimer() {
+  for (const cb of timerSubs) { try { cb(activeFeedTimer); } catch { /* swallow */ } }
+}
+
+export function getActiveFeedTimer() {
+  return activeFeedTimer ? { ...activeFeedTimer } : null;
+}
+
+export function subscribeFeedTimer(cb) {
+  timerSubs.add(cb);
+  return () => timerSubs.delete(cb);
+}
+
+// @req FR-01
+// @req FR-02
+export function startFeedTimer(side) {
+  gate('logFeed');
+  if (side !== 'port' && side !== 'starboard') {
+    return { ok: false, error: { code: 'side' } };
+  }
+  activeFeedTimer = { side, startedAt: Date.now() };
+  notifyTimer();
+  return { ok: true, value: activeFeedTimer };
+}
+
+// @req FR-03
+// Stops the running timer and commits a feed event with
+//   timestamp = start of the feed,
+//   durationMin = elapsed minutes (rounded; omitted when 0).
+export function stopFeedTimerAndLog() {
+  gate('logFeed');
+  if (!activeFeedTimer) return { ok: false, error: { code: 'noTimer' } };
+  const elapsedMs = Date.now() - activeFeedTimer.startedAt;
+  const durationMin = Math.max(0, Math.round(elapsedMs / 60_000));
+  const startIso = toLocalIso(new Date(activeFeedTimer.startedAt));
+  const side = activeFeedTimer.side;
+  const ev = {
+    id: newEventId('feed', startIso),
+    type: 'feed',
+    timestamp: startIso,
+    side,
+    ...(durationMin > 0 ? { durationMin } : {}),
+  };
+  activeFeedTimer = null;
+  notifyTimer();
+  const w = commit(ev);
+  return { ok: w.ok, value: ev, error: w.error };
+}
+
+export function cancelFeedTimer() {
+  if (!activeFeedTimer) return { ok: true };
+  activeFeedTimer = null;
+  notifyTimer();
+  return { ok: true };
+}
+
+// @req FR-01
+// @req FR-03
+// Quick-log path for chip ≠ Now: timestamp is the chip-resolved time,
+// duration is the elapsed minutes from chip-time to now (so a
+// "15m ago" tap records a 15-minute feed that ended at now).
+export function logFeedWithChipDuration({ side, when }) {
+  gate('logFeed');
+  if (side !== 'port' && side !== 'starboard') {
+    return { ok: false, error: { code: 'side' } };
+  }
+  const ts = resolveTimestampOrNow(when);
+  if (!ts.ok) return { ok: false, error: { code: 'time', errorKey: ts.errorKey } };
+  const startMs = ts.value.getTime();
+  const durationMin = Math.max(0, Math.round((Date.now() - startMs) / 60_000));
+  const iso = toLocalIso(new Date(startMs));
+  const ev = {
+    id: newEventId('feed', iso),
+    type: 'feed',
+    timestamp: iso,
+    side,
+    ...(durationMin > 0 ? { durationMin } : {}),
+  };
+  const w = commit(ev);
+  return { ok: w.ok, value: ev, error: w.error };
+}

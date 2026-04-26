@@ -49,6 +49,13 @@
 
   "event.confirm.feedPort": "Port-side feed logged at {time}",
   "event.confirm.feedStarboard": "Starboard-side feed logged at {time}",
+  "feed.timer.runningPort.themed": "PORT BOOM TIME — {elapsed}",
+  "feed.timer.runningPort.plain": "Feeding (left) — {elapsed}",
+  "feed.timer.runningStarboard.themed": "STARBOARD BOOM TIME — {elapsed}",
+  "feed.timer.runningStarboard.plain": "Feeding (right) — {elapsed}",
+  "feed.timer.hint.themed": "Tap CONTACT again to disengage and log",
+  "feed.timer.hint.plain": "Tap a feed button again to stop and log",
+  "feed.timer.cancel": "Cancel",
   "event.confirm.wet": "Wet diaper logged at {time}",
   "event.confirm.dirty": "Dirty diaper logged at {time}",
   "event.confirm.weight": "Weight & length logged at {time}",

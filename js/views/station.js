@@ -6,7 +6,11 @@
 import { t } from '../i18n.js';
 import { getActiveTheme, tk } from '../theme.js';
 import { getState, subscribe } from '../state.js';
-import { logFeed, logDiaper, logWeight, deleteLast } from '../events.js';
+import {
+  logFeed, logDiaper, logWeight, deleteLast,
+  startFeedTimer, stopFeedTimerAndLog, cancelFeedTimer,
+  getActiveFeedTimer, subscribeFeedTimer, logFeedWithChipDuration,
+} from '../events.js';
 import { dispatch } from '../state.js';
 import { writeState } from '../storage.js';
 import { predictFeed, predictDiaper } from '../prediction.js';
@@ -22,7 +26,9 @@ import {
 
 let mountEl = null;
 let unsubState = null;
+let unsubTimer = null;
 let tickHandle = null;
+let timerTickHandle = null;
 
 function refresh() {
   if (!mountEl) return;
@@ -30,6 +36,7 @@ function refresh() {
   const theme = getActiveTheme();
   mountEl.innerHTML = '';
   mountEl.appendChild(renderHeader(theme));
+  mountEl.appendChild(renderTimerPanel(theme));
   mountEl.appendChild(renderActions(theme, state));
   mountEl.appendChild(renderChip(theme));
   mountEl.appendChild(renderLastContact(theme, state));
@@ -108,13 +115,11 @@ function renderActions(theme, state) {
   };
   wrap.appendChild(make(tk('loadAction.contactPort'), 'loadAction.contactPort.plain', () => {
     if (handleEmconBlocked()) return;
-    const r = logFeed({ side: 'port', when: getSelection() });
-    handleLogResult(r, 'event.confirm.feedPort', 'feedPort');
+    handleContactTap('port');
   }));
   wrap.appendChild(make(tk('loadAction.contactStarboard'), 'loadAction.contactStarboard.plain', () => {
     if (handleEmconBlocked()) return;
-    const r = logFeed({ side: 'starboard', when: getSelection() });
-    handleLogResult(r, 'event.confirm.feedStarboard', 'feedStarboard');
+    handleContactTap('starboard');
   }));
   wrap.appendChild(make(tk('loadAction.jettisoned'), 'loadAction.jettisoned.plain', () => {
     if (handleEmconBlocked()) return;
@@ -133,6 +138,75 @@ function renderActions(theme, state) {
     openWeightDialog();
   }));
   return wrap;
+}
+
+// CONTACT-tap dispatcher.
+//
+//   chip = Now :
+//     no timer   → start one (no event logged yet)
+//     timer on   → stop & log; duration = elapsed minutes
+//   chip ≠ Now :
+//     log immediately; timestamp = chip-time, duration = (now − chip-time) min
+//
+// Behavioural deviation from FR-01 verbatim ("single tap creates an
+// event") — flagged for AMD-003 in Phase 6.
+function handleContactTap(side) {
+  const sel = getSelection();
+  const active = getActiveFeedTimer();
+  if (active) {
+    const r = stopFeedTimerAndLog();
+    if (!r.ok) { toast('storage.replaceFailed'); return; }
+    const time = formatHm(new Date(r.value.timestamp));
+    handleLogResult(r, side === 'port' ? 'event.confirm.feedPort' : 'event.confirm.feedStarboard',
+      side === 'port' ? 'feedPort' : 'feedStarboard');
+    return;
+  }
+  if (sel.kind === 'now') {
+    startFeedTimer(side);
+    refresh();
+    return;
+  }
+  // chip ≠ Now → quick-log path
+  const r = logFeedWithChipDuration({ side, when: sel });
+  if (!r.ok) {
+    if (r.error?.errorKey) toast(r.error.errorKey);
+    return;
+  }
+  handleLogResult(r, side === 'port' ? 'event.confirm.feedPort' : 'event.confirm.feedStarboard',
+    side === 'port' ? 'feedPort' : 'feedStarboard');
+  chipReset();
+}
+
+// Live-timer panel; rendered when a CONTACT timer is running.
+function renderTimerPanel(theme) {
+  const active = getActiveFeedTimer();
+  const wrap = el('section', { className: 'feed-timer' });
+  if (!active) {
+    wrap.style.cssText = 'display:none;';
+    return wrap;
+  }
+  wrap.style.cssText = 'border:1px solid #7fff7f;background:#0d1f0d;color:#7fff7f;padding:0.5rem 0.6rem;margin:0.4rem 0;text-align:center;';
+  const elapsed = formatElapsed(Date.now() - active.startedAt);
+  const titleKey = active.side === 'port'
+    ? `feed.timer.runningPort.${theme}`
+    : `feed.timer.runningStarboard.${theme}`;
+  wrap.appendChild(el('strong', { text: t(titleKey, { elapsed }), style: 'font-size:1.1rem;font-variant-numeric:tabular-nums;' }));
+  wrap.appendChild(el('p', { text: t(`feed.timer.hint.${theme}`), style: 'margin:0.3rem 0 0.4rem;font-size:0.75rem;color:#aac8aa;' }));
+  wrap.appendChild(el('button', {
+    type: 'button',
+    className: 'tap',
+    text: t('feed.timer.cancel'),
+    style: 'font-size:0.8rem;background:transparent;color:#ffb84d;border-color:#ffb84d;',
+    on: { click: () => { cancelFeedTimer(); refresh(); } },
+  }));
+  return wrap;
+}
+
+function formatElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
 function handleEmconBlocked() {
@@ -504,6 +578,8 @@ export function mount(rootEl) {
   mountEl = rootEl;
   refresh();
   unsubState = subscribe(refresh);
+  unsubTimer = subscribeFeedTimer(syncTimerTick);
+  syncTimerTick(getActiveFeedTimer());
   if (tickHandle) clearInterval(tickHandle);
   tickHandle = setInterval(refresh, RELATIVE_TIME_TICK_MS);
   // FR-23: refresh on visibility change.
@@ -512,13 +588,20 @@ export function mount(rootEl) {
   }
 }
 
+function syncTimerTick(active) {
+  if (timerTickHandle) { clearInterval(timerTickHandle); timerTickHandle = null; }
+  if (active) timerTickHandle = setInterval(refresh, 1000);
+}
+
 function onVisibility() {
   if (document.visibilityState === 'visible') refresh();
 }
 
 export function unmount() {
   if (unsubState) unsubState();
+  if (unsubTimer) unsubTimer();
   if (tickHandle) clearInterval(tickHandle);
+  if (timerTickHandle) clearInterval(timerTickHandle);
   if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility);
   if (mountEl) mountEl.innerHTML = '';
   mountEl = null;
