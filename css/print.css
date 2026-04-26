@@ -1,0 +1,19 @@
+/* css/print.css — pediatrician report print styles (FR-131, NFR-29). */
+
+@page { size: A4 portrait; margin: 1.5cm; }
+
+@media print {
+  body, html { background: #ffffff; color: #111; }
+  #aar-toasts, #aar-banners, .nav-back, .print-btn { display: none !important; }
+  .report-body {
+    background: #ffffff;
+    color: #111;
+    width: 100%;
+    max-width: none;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .report-body svg { width: 100% !important; max-width: none !important; }
+  .report-body table { width: 100%; border-collapse: collapse; }
+  .report-body table th, .report-body table td { border: 1px solid #999; padding: 0.2cm; }
+}

@@ -1,0 +1,12 @@
+/* css/contrast.css — NFR-21 prefers-contrast: more. */
+
+@media (prefers-contrast: more) {
+  :root {
+    --fg: #ffffff;
+    --fg-dim: #dddddd;
+    --accent: #b9ffb9;
+    --warn: #ffd57a;
+  }
+  .tap { border-width: 2px; }
+  .tap:focus-visible { outline-width: 4px; }
+}

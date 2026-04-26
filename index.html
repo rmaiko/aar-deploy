@@ -1,103 +1,66 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="themed">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AAR-DEPLOY — Pre-flight</title>
-  <meta name="description" content="aar-deploy: a fully offline newborn-care tracker. Coming soon." />
-  <style>
-    :root {
-      --bg: #0a0d0a;
-      --panel: #131a13;
-      --fg: #c8e6c9;
-      --accent: #7fff7f;
-      --warn: #ffb84d;
-      --grid: #1f2a1f;
-      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; height: 100%; }
-    body {
-      background:
-        repeating-linear-gradient(0deg, transparent 0 23px, var(--grid) 23px 24px),
-        repeating-linear-gradient(90deg, transparent 0 23px, var(--grid) 23px 24px),
-        var(--bg);
-      color: var(--fg);
-      font-family: var(--mono);
-      display: grid;
-      place-items: center;
-      padding: 2rem;
-    }
-    .panel {
-      max-width: 36rem;
-      width: 100%;
-      padding: 1.75rem 2rem;
-      background: var(--panel);
-      border: 1px solid var(--accent);
-      box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px var(--accent), 0 0 32px rgba(127,255,127,0.15);
-      letter-spacing: 0.02em;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      border-bottom: 1px dashed var(--accent);
-      padding-bottom: 0.6rem;
-      margin-bottom: 1rem;
-      text-transform: uppercase;
-      font-size: 0.75rem;
-      color: var(--accent);
-    }
-    h1 {
-      font-size: 1.4rem;
-      margin: 0 0 0.5rem 0;
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-    }
-    .sub {
-      font-size: 0.85rem;
-      color: var(--warn);
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-      margin: 0 0 1.25rem 0;
-    }
-    p { line-height: 1.55; margin: 0.6rem 0; font-size: 0.95rem; }
-    .footer {
-      margin-top: 1.5rem;
-      padding-top: 0.6rem;
-      border-top: 1px dashed var(--accent);
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.7rem;
-      color: var(--accent);
-      text-transform: uppercase;
-    }
-    .blink { animation: blink 1.4s step-start infinite; }
-    @keyframes blink { 50% { opacity: 0.25; } }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>aar-deploy — Loadmaster Station</title>
+  <meta name="description" content="aar-deploy: a fully offline newborn-care tracker themed as a military-aircraft loadmaster console. All data stays on your device." />
+
+  <!-- ADR-006 cache hint. Pages still applies its 10-minute cache; the
+       boot SCHEMA_VERSION check is the durable mitigation. -->
+  <meta http-equiv="Cache-Control" content="no-cache" />
+
+  <!-- Content-Security-Policy per ADR-012 (post-Phase-4 §5.3 fix:
+       connect-src 'self' for the boot-time locale fetch). -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none';
+                 script-src 'self' 'sha256-IHeNPfCHzCvtX6OsaEdIfL37hqJtjKx4DS4aBxV0Rk4=';
+                 style-src 'self';
+                 connect-src 'self';
+                 img-src 'self' data:;
+                 base-uri 'none';
+                 form-action 'none';
+                 manifest-src 'none'" />
+
+  <link rel="stylesheet" href="css/main.css?v=1" />
+  <link rel="stylesheet" href="css/motion.css?v=1" />
+  <link rel="stylesheet" href="css/contrast.css?v=1" />
+  <link rel="stylesheet" href="css/print.css?v=1" media="print" />
+
+  <!-- C-01 head-inline boot loader: pre-paint resolves theme + lang from
+       URL > localStorage > navigator. NFR-12 (dark-by-default) is set
+       here so there is no FOUC even before js/app.js evaluates. -->
+  <script>
+    (function () {
+      try {
+        var p = new URL(location).searchParams;
+        var lang = p.get('lang') || localStorage.getItem('aar.lang') ||
+                   (navigator.language || 'en').split('-')[0] || 'en';
+        var supported = ['en', 'pt-br', 'fr', 'el'];
+        if (supported.indexOf(lang) < 0) lang = 'en';
+        document.documentElement.lang = lang;
+        // Theme: URL > localStorage (mirror of appState.themePreference) > themed.
+        var t = p.get('theme');
+        if (t !== 'themed' && t !== 'plain') {
+          try {
+            var raw = localStorage.getItem('aar.appState');
+            if (raw) {
+              var s = JSON.parse(raw);
+              if (s && (s.themePreference === 'plain' || s.themePreference === 'themed')) t = s.themePreference;
+            }
+          } catch (e) { /* swallow */ }
+        }
+        document.documentElement.setAttribute('data-theme', (t === 'plain') ? 'plain' : 'themed');
+      } catch (e) { /* boot recovery in app.js will handle it */ }
+    })();
+  </script>
 </head>
 <body>
-  <main class="panel" role="main">
-    <div class="header">
-      <span>AAR-DEPLOY · LOADMASTER STATION</span>
-      <span class="blink">● STBY</span>
-    </div>
-    <h1>Pre-flight in progress</h1>
-    <p class="sub">Coming soon — refueling boom not yet extended.</p>
-    <p>
-      This site will host a small, fully offline tracker for newborn-care
-      events — feedings, wet diapers, dirty diapers, weight — themed as the
-      console of a military cargo aircraft loadmaster. All data stays on
-      your device.
-    </p>
-    <p>
-      The cockpit is being wired up. Check back shortly.
-    </p>
-    <div class="footer">
-      <span>STA: GROUND</span>
-      <span>v0 · pre-deploy</span>
-    </div>
-  </main>
+  <main id="app" role="main"></main>
+
+  <!-- Vendored lz-string (ADR-013) — classic script so window.LZString is
+       defined before js/app.js evaluates. -->
+  <script src="js/vendor/lz-string-1.4.4.min.js?v=1"></script>
+  <script type="module" src="js/app.js?v=1"></script>
 </body>
 </html>

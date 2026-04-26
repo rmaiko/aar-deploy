@@ -1,0 +1,6 @@
+/* css/motion.css — NFR-21 prefers-reduced-motion. */
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  .tap:active { transform: none; }
+}
