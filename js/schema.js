@@ -89,8 +89,11 @@ function validateEvent(ev) {
     }
   }
   if (ev.type === 'weight') {
-    if (typeof ev.weightKg !== 'number' || ev.weightKg < 0.1 || ev.weightKg > 50) return 'weight out of range';
-    if (typeof ev.lengthCm !== 'number' || ev.lengthCm < 10 || ev.lengthCm > 200) return 'length out of range';
+    const hasW = ev.weightKg != null;
+    const hasL = ev.lengthCm != null;
+    if (!hasW && !hasL) return 'weight event needs at least weightKg or lengthCm';
+    if (hasW && (typeof ev.weightKg !== 'number' || ev.weightKg < 0.1 || ev.weightKg > 50)) return 'weight out of range';
+    if (hasL && (typeof ev.lengthCm !== 'number' || ev.lengthCm < 10 || ev.lengthCm > 200)) return 'length out of range';
   }
   if (ev.type === 'note') {
     if (typeof ev.notes !== 'string' || ev.notes.length === 0) return 'note event requires non-empty notes';

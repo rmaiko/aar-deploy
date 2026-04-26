@@ -83,6 +83,25 @@ export function checkRange(now, ts) {
   return { ok: true, value: ts };
 }
 
+// @req FR-11
+// Resolve an "HH:MM" time-only input to today + that time.  If the
+// resulting Date is in the future relative to `now`, wrap to yesterday
+// (subtract 24h) — matches the natural "what time was it?" UX without
+// a date picker. Caller passes the result to checkRange().
+export function resolveTimeOnly(hhmm, now = new Date()) {
+  if (typeof hhmm !== 'string' || !/^\d{1,2}:\d{2}$/.test(hhmm)) {
+    return { ok: false, errorKey: 'time.notFuture' };
+  }
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(now);
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() > now.getTime() + 1000) {
+    // user picked a future-of-today time → assume they meant yesterday
+    d.setDate(d.getDate() - 1);
+  }
+  return checkRange(now, d);
+}
+
 // @req FR-43
 // Format a Date as ISO-8601 with explicit local offset.
 export function toLocalIso(date) {

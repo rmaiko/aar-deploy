@@ -84,14 +84,21 @@ export function logDiaper({ type, when }) {
 // @req FR-07
 // @req FR-08
 // @req FR-09
+// Either field is independently optional, but at least one must be
+// provided.  Empty/blank → omitted entirely.  AMD-003 carry-forward —
+// FR-08's verbatim "weight outside 0.5–25 kg or length outside 30–120
+// cm shall be rejected" is now interpreted "if provided".
 export function logWeight({ weightKg, lengthCm, when }) {
   gate('logWeight');
-  const w = Number(weightKg);
-  const l = Number(lengthCm);
-  if (!Number.isFinite(w) || w < WEIGHT_KG_MIN || w > WEIGHT_KG_MAX) {
+  const wRaw = (weightKg === '' || weightKg == null) ? null : Number(weightKg);
+  const lRaw = (lengthCm === '' || lengthCm == null) ? null : Number(lengthCm);
+  if (wRaw == null && lRaw == null) {
+    return { ok: false, error: { code: 'empty', errorKey: 'weight.atLeastOne' } };
+  }
+  if (wRaw != null && (!Number.isFinite(wRaw) || wRaw < WEIGHT_KG_MIN || wRaw > WEIGHT_KG_MAX)) {
     return { ok: false, error: { code: 'weight', errorKey: 'weight.rangeError' } };
   }
-  if (!Number.isFinite(l) || l < LENGTH_CM_MIN || l > LENGTH_CM_MAX) {
+  if (lRaw != null && (!Number.isFinite(lRaw) || lRaw < LENGTH_CM_MIN || lRaw > LENGTH_CM_MAX)) {
     return { ok: false, error: { code: 'length', errorKey: 'length.rangeError' } };
   }
   const tsCheck = resolveTimestampOrNow(when);
@@ -101,8 +108,8 @@ export function logWeight({ weightKg, lengthCm, when }) {
     id: newEventId('weight', iso),
     type: 'weight',
     timestamp: iso,
-    weightKg: w,
-    lengthCm: l,
+    ...(wRaw != null ? { weightKg: wRaw } : {}),
+    ...(lRaw != null ? { lengthCm: lRaw } : {}),
   };
   const wr = commit(ev);
   return { ok: wr.ok, value: ev, error: wr.error };

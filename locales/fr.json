@@ -36,6 +36,7 @@
   "weight.timeLabel": "Time",
   "weight.rangeError": "Weight must be between 0.5 and 25 kg",
   "length.rangeError": "Length must be between 30 and 120 cm",
+  "weight.atLeastOne": "Enter at least a weight or a length.",
   "weight.confirm": "Save weight & length",
 
   "time.notFuture": "Time cannot be in the future",

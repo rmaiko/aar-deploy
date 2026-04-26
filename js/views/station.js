@@ -19,7 +19,7 @@ import { isEmcon, getImportedState } from '../emcon.js';
 import { navigate } from '../router.js';
 import { ROUTES } from '../config.js';
 import { toast, dialog, banner } from '../overlays.js';
-import { getOffsets, getSelection, setSelection, reset as chipReset, toLocalIso } from '../chip.js';
+import { getOffsets, getSelection, setSelection, reset as chipReset, toLocalIso, resolveTimeOnly } from '../chip.js';
 import {
   RELATIVE_TIME_TICK_MS, BACKUP_NUDGE_DAYS, BACKUP_NUDGE_MIN_EVENTS, FIRST_BACKUP_MIN_EVENTS,
   REMIND_LATER_HOURS,
@@ -313,8 +313,10 @@ function renderChip(theme) {
 }
 
 async function openChipPicker() {
-  const input = el('input', { type: 'datetime-local' });
-  input.value = toLocalDateTimeInput(new Date());
+  // FR-11: hours and minutes for today.  A future-of-today time wraps
+  // to yesterday automatically (resolveTimeOnly).
+  const input = el('input', { type: 'time' });
+  input.value = toLocalTimeInput(new Date());
   const choice = await dialog({
     titleKey: 'chip.custom',
     bodyKey: null,
@@ -325,14 +327,20 @@ async function openChipPicker() {
     ],
   });
   if (!choice || choice.kind !== 'confirm') return;
-  const iso = new Date(input.value).toISOString();
-  setSelection({ kind: 'custom', iso });
+  const r = resolveTimeOnly(input.value, new Date());
+  if (!r.ok) { toast(r.errorKey ?? 'time.notFuture'); return; }
+  setSelection({ kind: 'custom', iso: r.value.toISOString() });
   refresh();
 }
 
 function toLocalDateTimeInput(d) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toLocalTimeInput(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // @req FR-20
@@ -666,10 +674,16 @@ async function triggerExport() {
 
 async function openWeightDialog() {
   const wrap = el('div');
+  // Both fields independently optional; at least one required (see
+  // events.js logWeight).  Empty inputs → field omitted from event.
   const wInput = el('input', { type: 'number', step: '0.05' });
+  wInput.placeholder = '—';
   const lInput = el('input', { type: 'number', step: '0.5' });
-  const tInput = el('input', { type: 'datetime-local' });
-  tInput.value = toLocalDateTimeInput(new Date());
+  lInput.placeholder = '—';
+  // Time-only picker (FR-11).  resolveTimeOnly wraps to yesterday if
+  // the chosen time is in the future-of-today; rejects > 24h ago.
+  const tInput = el('input', { type: 'time' });
+  tInput.value = toLocalTimeInput(new Date());
   wrap.appendChild(labelled(t('weight.weightLabel'), wInput));
   wrap.appendChild(labelled(t('weight.lengthLabel'), lInput));
   wrap.appendChild(labelled(t('weight.timeLabel'), tInput));
@@ -682,10 +696,12 @@ async function openWeightDialog() {
     ],
   });
   if (choice !== 'ok') return;
+  const tsCheck = resolveTimeOnly(tInput.value, new Date());
+  if (!tsCheck.ok) { toast(tsCheck.errorKey ?? 'time.notFuture'); return; }
   const r = logWeight({
     weightKg: wInput.value,
     lengthCm: lInput.value,
-    when: new Date(tInput.value),
+    when: tsCheck.value,
   });
   if (!r.ok) {
     if (r.error?.errorKey) toast(r.error.errorKey);
