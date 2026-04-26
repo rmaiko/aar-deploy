@@ -8,6 +8,7 @@ import { getState, subscribe } from '../state.js';
 import { isEmcon, getImportedState } from '../emcon.js';
 import { navigate } from '../router.js';
 import { ROUTES, MISSION_LOG_PAGE_SIZE } from '../config.js';
+import { weightLengthCharts } from './charts.js';
 
 let mountEl = null;
 let unsub = null;
@@ -34,6 +35,17 @@ function refresh() {
   const theme = getActiveTheme();
   mountEl.innerHTML = '';
   mountEl.appendChild(renderHeader(theme));
+  const charts = weightLengthCharts(state);
+  if (charts) {
+    const wrap = el('section', { className: 'log-charts', style: 'display:flex;flex-direction:column;gap:0.6rem;margin:0.6rem 0;' });
+    wrap.appendChild(charts.weightSvg);
+    wrap.appendChild(charts.lengthSvg);
+    wrap.appendChild(el('p', {
+      text: 'Anchor: first logged event = month 0 on the X axis. Bands are an indicative WHO-style fan, not clinical reference.',
+      style: 'font-size:0.7rem;color:#aac8aa;margin:0;',
+    }));
+    mountEl.appendChild(wrap);
+  }
   const entries = combineEntries(state);
   if (entries.length === 0) {
     mountEl.appendChild(el('p', { className: 'empty', text: t('log.empty') }));
