@@ -56,11 +56,31 @@ function el(tag, opts = {}, children = []) {
 }
 
 // @req FR-15
+// @req FR-69
 function renderHeader(theme) {
   const h = el('header', { className: 'station-header' });
-  h.appendChild(el('h1', { text: t(`app.title.${theme}`) }));
-  const sub = el('p', { className: 'sub', text: t(`app.subtitle.${theme}`) });
-  h.appendChild(sub);
+  const titleWrap = el('div', { className: 'station-titles' });
+  titleWrap.appendChild(el('h1', { text: t(`app.title.${theme}`) }));
+  titleWrap.appendChild(el('p', { className: 'sub', text: t(`app.subtitle.${theme}`) }));
+  h.appendChild(titleWrap);
+  const nav = el('nav', { className: 'station-nav' });
+  nav.appendChild(el('button', {
+    type: 'button',
+    className: 'tap nav-btn',
+    text: t('nav.openLog'),
+    aria: { label: t('nav.openLog') },
+    on: { click: () => navigate(ROUTES.LOG) },
+  }));
+  nav.appendChild(el('button', {
+    type: 'button',
+    className: 'tap nav-btn nav-settings',
+    // Gear glyph + visible label so the affordance is discoverable
+    // even before the user reads the label.
+    text: '⚙ ' + t('nav.openSettings'),
+    aria: { label: t('nav.openSettings') },
+    on: { click: () => navigate(ROUTES.SETTINGS) },
+  }));
+  h.appendChild(nav);
   return h;
 }
 

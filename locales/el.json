@@ -9,6 +9,8 @@
   "nav.settings": "Settings",
   "nav.back": "Back",
   "nav.return": "Back to station",
+  "nav.openSettings": "Settings",
+  "nav.openLog": "Mission Log",
 
   "loadAction.contactPort.themed": "CONTACT — PORT",
   "loadAction.contactPort.plain": "Feed (left breast)",
