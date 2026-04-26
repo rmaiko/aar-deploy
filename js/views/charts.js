@@ -42,13 +42,24 @@ function fanForMonth(anchors, m) {
   return Z.map((z) => p50 + z * sigma);
 }
 
-// Build a 9-curve dataset over months 0..12 — each curve is an array of
-// {month, value}.
-function buildCurves(anchors) {
+// Build a 9-curve dataset over months 0..xMax — each curve is an array of
+// {month, value}.  Supports fractional xMax by interpolating an endpoint
+// between the surrounding integer-month anchors.
+function buildCurves(anchors, xMax = MONTHS) {
+  const cap = Math.max(0, Math.min(MONTHS, xMax));
   const curves = Z.map(() => []);
-  for (let m = 0; m <= MONTHS; m++) {
+  const lastInt = Math.floor(cap);
+  for (let m = 0; m <= lastInt; m++) {
     const fan = fanForMonth(anchors, m);
     for (let p = 0; p < Z.length; p++) curves[p].push({ month: m, value: fan[p] });
+  }
+  if (cap > lastInt) {
+    const lo = fanForMonth(anchors, lastInt);
+    const hi = fanForMonth(anchors, lastInt + 1);
+    const t = cap - lastInt;
+    for (let p = 0; p < Z.length; p++) {
+      curves[p].push({ month: cap, value: lo[p] + (hi[p] - lo[p]) * t });
+    }
   }
   return curves;
 }
@@ -83,14 +94,33 @@ const PALETTES = {
 // ms representing month 0 on the X axis.
 function renderChart({ title, units, anchors, events, field, anchorMs, palette = 'dark' }) {
   const C = PALETTES[palette] ?? PALETTES.dark;
-  // Build the percentile fan.
-  const curves = buildCurves(anchors);
+
+  // X-domain: tightest cover of the data, floored at 1 month and
+  // capped at the WHO table's 12 months.  Without this the percentile
+  // fan stretches across a full year while the user's data points
+  // collapse onto the left edge.
+  const sorted = events.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const dataMonths = sorted.map((ev) =>
+    (new Date(ev.timestamp).getTime() - anchorMs) / MS_PER_MONTH);
+  const latestM = dataMonths.length ? Math.max(...dataMonths) : 0;
+  const xMax = Math.max(1, Math.min(MONTHS, Math.ceil(latestM + 0.25)));
+
+  // Build the percentile fan over the visible domain.
+  const curves = buildCurves(anchors, xMax);
+  const lastIdx = curves[0].length - 1;
 
   // Determine y-range from the fan ∪ user data, with a small pad.
   let yMin = curves[0][0].value;
-  let yMax = curves[Z.length - 1][MONTHS].value;
+  let yMax = curves[Z.length - 1][lastIdx].value;
+  for (let p = 0; p < Z.length; p++) {
+    for (const pt of curves[p]) {
+      if (pt.value < yMin) yMin = pt.value;
+      if (pt.value > yMax) yMax = pt.value;
+    }
+  }
   for (const ev of events) {
     const v = ev[field];
+    if (typeof v !== 'number') continue;
     if (v < yMin) yMin = v;
     if (v > yMax) yMax = v;
   }
@@ -101,7 +131,7 @@ function renderChart({ title, units, anchors, events, field, anchorMs, palette =
   const PAD_L = 38, PAD_R = 12, PAD_T = 28, PAD_B = 32;
   const innerW = W - PAD_L - PAD_R;
   const innerH = H - PAD_T - PAD_B;
-  const sx = (m) => PAD_L + (m / MONTHS) * innerW;
+  const sx = (m) => PAD_L + (m / xMax) * innerW;
   const sy = (v) => PAD_T + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
 
   const root = svg('svg', {
@@ -131,14 +161,15 @@ function renderChart({ title, units, anchors, events, field, anchorMs, palette =
     }, [textNode(`${v}${units}`)]));
   }
 
-  // X-axis ticks (every 3 months).
-  for (let m = 0; m <= MONTHS; m += 3) {
+  // X-axis ticks — step adapts to the visible domain.
+  const xStep = niceXStep(xMax);
+  for (let m = 0; m <= xMax + 1e-9; m += xStep) {
     const x = sx(m);
     root.appendChild(svg('line', { x1: x, x2: x, y1: PAD_T, y2: H - PAD_B, stroke: C.grid }));
     root.appendChild(svg('text', {
       x, y: H - PAD_B + 12, fill: C.axisLabel, 'text-anchor': 'middle',
       'font-family': 'ui-monospace,Menlo,monospace', 'font-size': '9',
-    }, [textNode(`${m}m`)]));
+    }, [textNode(formatMonthTick(m, xStep))]));
   }
 
   // Frame.
@@ -159,7 +190,7 @@ function renderChart({ title, units, anchors, events, field, anchorMs, palette =
       'stroke-dasharray': isMid ? '' : '2,2',
     }));
     // Label the curve at the right edge.
-    const last = curves[p][MONTHS];
+    const last = curves[p][lastIdx];
     root.appendChild(svg('text', {
       x: sx(last.month) + 2, y: sy(last.value) + 3,
       fill: isMid ? C.fanLabelMid : C.fanLabel,
@@ -168,11 +199,10 @@ function renderChart({ title, units, anchors, events, field, anchorMs, palette =
   }
 
   // User events: dots + connecting polyline.
-  const sorted = events.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   const dataPts = sorted.map((ev) => {
     const m = (new Date(ev.timestamp).getTime() - anchorMs) / MS_PER_MONTH;
     return { m, v: ev[field], ts: ev.timestamp };
-  }).filter((p) => p.m >= -0.1 && p.m <= MONTHS + 0.1);
+  }).filter((p) => typeof p.v === 'number' && p.m >= -0.1 && p.m <= xMax + 0.1);
 
   if (dataPts.length >= 2) {
     const points = dataPts.map((p) => `${sx(p.m)},${sy(p.v)}`).join(' ');
@@ -187,6 +217,22 @@ function renderChart({ title, units, anchors, events, field, anchorMs, palette =
     }));
   }
   return root;
+}
+
+// Pick a tick step that yields ~4–8 ticks across the visible X domain.
+function niceXStep(xMax) {
+  if (xMax <= 1) return 0.25;
+  if (xMax <= 2) return 0.5;
+  if (xMax <= 4) return 1;
+  if (xMax <= 8) return 2;
+  return 3;
+}
+
+// Sub-month ticks read more naturally as weeks (1 month ≈ 4.345 w).
+function formatMonthTick(m, step) {
+  if (step >= 1) return `${Math.round(m)}m`;
+  const weeks = Math.round(m * 4.345);
+  return `${weeks}w`;
 }
 
 function niceStep(span) {
