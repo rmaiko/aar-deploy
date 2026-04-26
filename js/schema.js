@@ -10,7 +10,7 @@ import { SCHEMA_VERSION as CFG_SCHEMA_VERSION } from './config.js';
 // @req NFR-24
 export const SCHEMA_VERSION = CFG_SCHEMA_VERSION;
 
-const EVENT_TYPES = new Set(['feed', 'wet', 'dirty', 'weight']);
+const EVENT_TYPES = new Set(['feed', 'wet', 'dirty', 'weight', 'note']);
 const SYSTEM_LOG_TYPES = new Set(['milestone_rebuild']);
 const TOP_LEVEL_KEYS = new Set([
   'schemaVersion',
@@ -91,6 +91,9 @@ function validateEvent(ev) {
   if (ev.type === 'weight') {
     if (typeof ev.weightKg !== 'number' || ev.weightKg < 0.1 || ev.weightKg > 50) return 'weight out of range';
     if (typeof ev.lengthCm !== 'number' || ev.lengthCm < 10 || ev.lengthCm > 200) return 'length out of range';
+  }
+  if (ev.type === 'note') {
+    if (typeof ev.notes !== 'string' || ev.notes.length === 0) return 'note event requires non-empty notes';
   }
   return null;
 }

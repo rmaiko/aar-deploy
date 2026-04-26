@@ -211,7 +211,7 @@ function renderEventList(events) {
   for (const ev of events.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))) {
     const li = document.createElement('li');
     li.style.cssText = 'padding:0.3rem 0;border-bottom:1px solid #ddd;';
-    const labelMap = { feed: 'Feed', wet: 'Wet diaper', dirty: 'Dirty diaper', weight: 'Weight & length' };
+    const labelMap = { feed: 'Feed', wet: 'Wet diaper', dirty: 'Dirty diaper', weight: 'Weight & length', note: 'Note' };
     const detail = ev.type === 'weight' ? ` · ${ev.weightKg} kg / ${ev.lengthCm} cm`
       : ev.type === 'feed' ? ` · ${ev.side}${ev.durationMin != null ? ` · ${ev.durationMin} min` : ''}` : '';
     const head = document.createElement('div');

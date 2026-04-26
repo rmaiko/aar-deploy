@@ -108,6 +108,26 @@ export function logWeight({ weightKg, lengthCm, when }) {
   return { ok: wr.ok, value: ev, error: wr.error };
 }
 
+// Generic free-form note event (extension beyond v1 type set —
+// AMD-003 carry-forward). timestamp = chip-resolved or now;
+// notes is required and capped at 500 chars.
+export function logNote({ notes, when }) {
+  gate('logNote');
+  const text = String(notes ?? '').trim();
+  if (!text) return { ok: false, error: { code: 'notes', message: 'notes required' } };
+  const tsCheck = resolveTimestampOrNow(when);
+  if (!tsCheck.ok) return { ok: false, error: { code: 'time', errorKey: tsCheck.errorKey } };
+  const iso = toLocalIso(tsCheck.value);
+  const ev = {
+    id: newEventId('note', iso),
+    type: 'note',
+    timestamp: iso,
+    notes: text.slice(0, 500),
+  };
+  const w = commit(ev);
+  return { ok: w.ok, value: ev, error: w.error };
+}
+
 // @req FR-76
 // @req FR-77
 export function deleteLast() {

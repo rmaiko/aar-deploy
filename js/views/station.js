@@ -10,7 +10,7 @@ import {
   logFeed, logDiaper, logWeight, deleteLast,
   startFeedTimer, stopFeedTimerAndLog, cancelFeedTimer,
   getActiveFeedTimer, subscribeFeedTimer, logFeedWithChipDuration,
-  updateEvent,
+  updateEvent, logNote,
 } from '../events.js';
 import { dispatch } from '../state.js';
 import { writeState } from '../storage.js';
@@ -138,7 +138,44 @@ function renderActions(theme, state) {
     if (handleEmconBlocked()) return;
     openWeightDialog();
   }));
+  wrap.appendChild(make(tk('loadAction.note'), 'loadAction.note.plain', () => {
+    if (handleEmconBlocked()) return;
+    openNoteDialog();
+  }));
   return wrap;
+}
+
+async function openNoteDialog() {
+  const wrap = el('div');
+  const ta = document.createElement('textarea');
+  ta.rows = 3;
+  ta.maxLength = 500;
+  ta.placeholder = t('note.dialog.placeholder');
+  ta.style.cssText = 'width:100%;font:inherit;background:#0a0d0a;color:#c8e6c9;border:1px solid #1f2a1f;padding:0.3rem;';
+  wrap.appendChild(ta);
+  // expose chip-driven timestamp explicitly so user sees what they're saving.
+  const tInput = document.createElement('input');
+  tInput.type = 'datetime-local';
+  tInput.value = toLocalDateTimeInput(new Date());
+  wrap.appendChild(labelled(t('weight.timeLabel'), tInput));
+  const choice = await dialog({
+    titleKey: 'note.dialog.title',
+    content: wrap,
+    actions: [
+      { labelKey: 'feeding.cancel', value: 'cancel', cancel: true },
+      { labelKey: 'note.dialog.save', value: 'ok', primary: true, defaultFocus: true },
+    ],
+  });
+  if (choice !== 'ok') return;
+  const text = ta.value.trim();
+  if (!text) { toast('note.dialog.empty'); return; }
+  const r = logNote({ notes: text, when: new Date(tInput.value) });
+  if (!r.ok) {
+    if (r.error?.errorKey) toast(r.error.errorKey);
+    return;
+  }
+  toast('event.confirm.note', { time: formatHm(new Date(r.value.timestamp)) });
+  refresh();
 }
 
 // CONTACT-tap dispatcher.
@@ -588,6 +625,7 @@ function labelForEvent(ev, theme) {
   if (ev.type === 'wet') return t(`log.entry.wet.${theme}`);
   if (ev.type === 'dirty') return t(`log.entry.dirty.${theme}`);
   if (ev.type === 'weight') return t(`log.entry.weight.${theme}`);
+  if (ev.type === 'note') return t(`log.entry.note.${theme}`);
   return ev.type;
 }
 

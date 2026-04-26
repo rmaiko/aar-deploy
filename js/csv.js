@@ -157,7 +157,7 @@ export function parseCsv(text) {
       const key = colMap[c];
       if (key) row[key] = cells[c]?.trim() ?? '';
     }
-    if (!row.type || !['feed', 'wet', 'dirty', 'weight'].includes(row.type)) {
+    if (!row.type || !['feed', 'wet', 'dirty', 'weight', 'note'].includes(row.type)) {
       skipped.push({ line: i + 1, reason: 'unknownType', row });
       continue;
     }

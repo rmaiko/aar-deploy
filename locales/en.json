@@ -22,6 +22,8 @@
   "loadAction.ordnance.plain": "Dirty diaper",
   "loadAction.weight.themed": "WEIGHT & BALANCE",
   "loadAction.weight.plain": "Weight + length",
+  "loadAction.note.themed": "FLIGHT NOTE",
+  "loadAction.note.plain": "Add a note",
 
   "feeding.durationLabel.themed": "Boom time (minutes, optional)",
   "feeding.durationLabel.plain": "Duration (minutes, optional)",
@@ -59,6 +61,7 @@
   "event.confirm.wet": "Wet diaper logged at {time}",
   "event.confirm.dirty": "Dirty diaper logged at {time}",
   "event.confirm.weight": "Weight & length logged at {time}",
+  "event.confirm.note": "Note logged at {time}",
 
   "humour.feedPort.0": "BRAVO-1 latched on the port boom — boom time begins.",
   "humour.feedPort.1": "Port-side refuel commenced. Maintain pressure.",
@@ -152,6 +155,11 @@
   "edit.cancel": "Cancel",
   "edit.savedToast": "Entry updated",
 
+  "note.dialog.title": "Add a note",
+  "note.dialog.placeholder": "What happened? (max 500 chars)",
+  "note.dialog.empty": "Type a note before saving.",
+  "note.dialog.save": "Save note",
+
   "vector.title.themed": "NEXT VECTOR",
   "vector.title.plain": "Next predicted",
   "vector.feeding": "Next vector: ~ {time} ± {band} min",
@@ -182,6 +190,8 @@
   "log.entry.dirty.plain": "Dirty diaper",
   "log.entry.weight.themed": "WEIGHT & BALANCE",
   "log.entry.weight.plain": "Weight & length",
+  "log.entry.note.themed": "FLIGHT NOTE",
+  "log.entry.note.plain": "Note",
   "log.entry.weightDetail": "{kg} kg / {cm} cm",
   "log.entry.duration": "{n} min",
   "log.relativeAndAbsolute": "{relative} · {time}",

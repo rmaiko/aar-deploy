@@ -108,6 +108,9 @@ function renderEvent(li, ev, theme, ts) {
     li.appendChild(document.createTextNode(' · '));
     li.appendChild(el('span', { text: t('log.entry.weightDetail', { kg: ev.weightKg, cm: ev.lengthCm }) }));
   }
+  if (ev.notes) {
+    li.appendChild(el('div', { text: '✎ ' + ev.notes, style: 'font-size:0.8rem;color:#aac8aa;margin-top:0.15rem;' }));
+  }
   return li;
 }
 
