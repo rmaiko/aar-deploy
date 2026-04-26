@@ -137,6 +137,48 @@ export function getLastEvent(state = getState()) {
   return state.events.length ? state.events[state.events.length - 1] : null;
 }
 
+// Per-entry edit (deviation from project_requirements.md §4 "out of scope:
+// per-entry edit beyond delete-last" — to formalise via AMD-003 in
+// Phase 6). Patches a single event by id and persists; runs the same
+// post-commit milestone re-evaluation as a fresh log.
+export function updateEvent(id, patch) {
+  gate('updateEvent');
+  const state = getState();
+  const ev = state.events.find((e) => e.id === id);
+  if (!ev) return { ok: false, error: { code: 'notFound' } };
+  // Validate patched fields.
+  const merged = { ...ev, ...patch };
+  if (merged.type === 'feed' && merged.durationMin != null && merged.durationMin !== '') {
+    const n = Number(merged.durationMin);
+    if (!Number.isFinite(n) || n < FEED_DURATION_MIN || n > FEED_DURATION_MAX) {
+      return { ok: false, error: { code: 'duration', errorKey: 'feeding.boomTimeRange' } };
+    }
+    patch.durationMin = n;
+  }
+  if (merged.type === 'weight') {
+    const w = Number(merged.weightKg);
+    const l = Number(merged.lengthCm);
+    if (!Number.isFinite(w) || w < WEIGHT_KG_MIN || w > WEIGHT_KG_MAX) {
+      return { ok: false, error: { code: 'weight', errorKey: 'weight.rangeError' } };
+    }
+    if (!Number.isFinite(l) || l < LENGTH_CM_MIN || l > LENGTH_CM_MAX) {
+      return { ok: false, error: { code: 'length', errorKey: 'length.rangeError' } };
+    }
+    patch.weightKg = w;
+    patch.lengthCm = l;
+  }
+  if (merged.timestamp && new Date(merged.timestamp).getTime() > Date.now() + 60_000) {
+    return { ok: false, error: { code: 'time', errorKey: 'time.notFuture' } };
+  }
+  if (patch.notes != null) patch.notes = String(patch.notes).slice(0, 500);
+  dispatch({ type: 'event/update', payload: { id, patch } });
+  if (evaluateMilestonesFn) {
+    try { evaluateMilestonesFn(getState()); } catch (e) { console.error('milestone eval threw:', e); }
+  }
+  const w = writeState(getState());
+  return { ok: w.ok, value: getState().events.find((e) => e.id === id), error: w.error };
+}
+
 // ─── Live feeding timer ─────────────────────────────────────────────
 //
 // Stopwatch-style flow: with chip = Now, the FIRST CONTACT tap starts a

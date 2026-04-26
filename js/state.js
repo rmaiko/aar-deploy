@@ -24,6 +24,19 @@ function reducer(prev, action) {
     case 'event/deleteLast':
       if (prev.events.length === 0) return prev;
       return { ...prev, events: prev.events.slice(0, -1) };
+    case 'event/update': {
+      // payload: { id, patch }
+      const { id, patch } = action.payload ?? {};
+      if (!id || !patch) return prev;
+      const idx = prev.events.findIndex((e) => e.id === id);
+      if (idx < 0) return prev;
+      const updated = { ...prev.events[idx], ...patch };
+      // Strip empty notes to keep the schema clean.
+      if ('notes' in updated && (updated.notes == null || updated.notes === '')) delete updated.notes;
+      const events = prev.events.slice();
+      events[idx] = updated;
+      return { ...prev, events };
+    }
     case 'milestones/set':
       return { ...prev, milestones: Array.isArray(action.payload) ? action.payload.slice() : [] };
     case 'milestones/append':

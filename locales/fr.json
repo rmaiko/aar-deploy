@@ -140,6 +140,17 @@
   "recent.empty.themed": "No traffic in the last 24h.",
   "recent.empty.plain": "Nothing logged in the last 24h.",
   "recent.viewAll": "View full mission log",
+  "recent.editHint": "Tap an entry to edit or add a note",
+
+  "edit.title": "Edit entry",
+  "edit.notesLabel": "Notes (optional, max 500 chars)",
+  "edit.sideLabel": "Side",
+  "edit.sidePort": "Port",
+  "edit.sideStarboard": "Starboard",
+  "edit.timestampLabel": "When",
+  "edit.save": "Save",
+  "edit.cancel": "Cancel",
+  "edit.savedToast": "Entry updated",
 
   "vector.title.themed": "NEXT VECTOR",
   "vector.title.plain": "Next predicted",
@@ -331,6 +342,7 @@
   "report.col.wet": "Wet diapers",
   "report.col.dirty": "Dirty diapers",
   "report.col.feedMin": "Total feed (min)",
+  "report.notesLabel": "Notes:",
   "report.back": "Back to settings",
 
   "storage.quotaExceeded.log": "This device's storage is full — your last log was kept in memory. Export now to avoid losing data.",

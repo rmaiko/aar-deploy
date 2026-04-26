@@ -210,11 +210,19 @@ function renderEventList(events) {
   ul.style.cssText = 'list-style:none;padding:0;margin:0;';
   for (const ev of events.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))) {
     const li = document.createElement('li');
-    li.style.cssText = 'padding:0.2rem 0;border-bottom:1px solid #ddd;';
+    li.style.cssText = 'padding:0.3rem 0;border-bottom:1px solid #ddd;';
     const labelMap = { feed: 'Feed', wet: 'Wet diaper', dirty: 'Dirty diaper', weight: 'Weight & length' };
     const detail = ev.type === 'weight' ? ` · ${ev.weightKg} kg / ${ev.lengthCm} cm`
       : ev.type === 'feed' ? ` · ${ev.side}${ev.durationMin != null ? ` · ${ev.durationMin} min` : ''}` : '';
-    li.textContent = `${ev.timestamp} · ${labelMap[ev.type] ?? ev.type}${detail}`;
+    const head = document.createElement('div');
+    head.textContent = `${ev.timestamp} · ${labelMap[ev.type] ?? ev.type}${detail}`;
+    li.appendChild(head);
+    if (ev.notes) {
+      const n = document.createElement('div');
+      n.style.cssText = 'padding-left:1rem;color:#444;font-style:italic;font-size:0.95em;';
+      n.textContent = `${t('report.notesLabel')} ${ev.notes}`;
+      li.appendChild(n);
+    }
     ul.appendChild(li);
   }
   return ul;

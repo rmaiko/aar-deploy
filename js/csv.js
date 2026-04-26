@@ -26,7 +26,7 @@ function eventToRow(ev, schemaVersion) {
     ev.durationMin != null ? String(ev.durationMin) : '',
     ev.weightKg != null ? String(ev.weightKg) : '',
     ev.lengthCm != null ? String(ev.lengthCm) : '',
-    '',
+    ev.notes ?? '',
   ];
   return cells.map(csvEscape).join(',');
 }
@@ -198,6 +198,9 @@ export function parseCsv(text) {
       if (!Number.isFinite(l) || l < 10 || l > 200) { skipped.push({ line: i + 1, reason: 'outOfRange', row }); continue; }
       ev.weightKg = w;
       ev.lengthCm = l;
+    }
+    if (row.notes !== undefined && row.notes !== '') {
+      ev.notes = String(row.notes).slice(0, 500);
     }
     if (row.schema_version !== undefined && row.schema_version !== '') {
       const v = Number(row.schema_version);

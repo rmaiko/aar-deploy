@@ -10,6 +10,7 @@ import {
   logFeed, logDiaper, logWeight, deleteLast,
   startFeedTimer, stopFeedTimerAndLog, cancelFeedTimer,
   getActiveFeedTimer, subscribeFeedTimer, logFeedWithChipDuration,
+  updateEvent,
 } from '../events.js';
 import { dispatch } from '../state.js';
 import { writeState } from '../storage.js';
@@ -369,6 +370,7 @@ function renderRecent(theme, state) {
   const list = el('ol', { className: 'recent-list', style: 'list-style:none;padding:0;margin:0.4rem 0;' });
   for (const ev of recent) list.appendChild(renderRecentEntry(ev, theme));
   wrap.appendChild(list);
+  wrap.appendChild(el('p', { text: t('recent.editHint'), style: 'font-size:0.7rem;color:#aac8aa;margin-top:0.2rem;' }));
   if (state.events.length > recent.length) {
     wrap.appendChild(el('button', {
       type: 'button',
@@ -382,8 +384,14 @@ function renderRecent(theme, state) {
 }
 
 function renderRecentEntry(ev, theme) {
-  const li = el('li', { className: 'recent-entry', style: 'display:flex;justify-content:space-between;gap:0.5rem;padding:0.25rem 0;border-bottom:1px solid #1f2a1f;font-size:0.85rem;' });
-  const left = el('span');
+  const li = el('li', { className: 'recent-entry' });
+  const btn = el('button', {
+    type: 'button',
+    className: 'recent-entry-btn',
+    style: 'display:flex;justify-content:space-between;gap:0.5rem;width:100%;padding:0.4rem 0.3rem;background:transparent;border:0;border-bottom:1px solid #1f2a1f;text-align:left;cursor:pointer;color:inherit;font:inherit;',
+    on: { click: () => openEditDialog(ev) },
+  });
+  const left = el('span', { style: 'flex:1 1 auto;min-width:0;' });
   left.appendChild(el('strong', { text: labelForEvent(ev, theme) }));
   if (ev.type === 'feed' && ev.durationMin != null) {
     left.appendChild(document.createTextNode(' · '));
@@ -393,12 +401,94 @@ function renderRecentEntry(ev, theme) {
     left.appendChild(document.createTextNode(' · '));
     left.appendChild(el('span', { text: t('log.entry.weightDetail', { kg: ev.weightKg, cm: ev.lengthCm }) }));
   }
-  li.appendChild(left);
-  const right = el('span', { style: 'color:#aac8aa;font-variant-numeric:tabular-nums;white-space:nowrap;' });
+  if (ev.notes) {
+    left.appendChild(el('div', { text: '✎ ' + ev.notes, style: 'font-size:0.75rem;color:#aac8aa;margin-top:0.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' }));
+  }
+  btn.appendChild(left);
+  const right = el('span', { style: 'color:#aac8aa;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto;' });
   const ts = new Date(ev.timestamp);
   right.textContent = `${formatHm(ts)} · ${relativeTimeString(ts)}`;
-  li.appendChild(right);
+  btn.appendChild(right);
+  li.appendChild(btn);
   return li;
+}
+
+// Edit-entry dialog. Per-type fields + free-form notes.
+async function openEditDialog(ev) {
+  if (handleEmconBlocked()) return;
+  const wrap = document.createElement('div');
+  const fields = {};
+  if (ev.type === 'feed') {
+    const sideSel = document.createElement('select');
+    for (const s of ['port', 'starboard']) {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s === 'port' ? t('edit.sidePort') : t('edit.sideStarboard');
+      if (ev.side === s) opt.selected = true;
+      sideSel.appendChild(opt);
+    }
+    fields.side = sideSel;
+    wrap.appendChild(labelled(t('edit.sideLabel'), sideSel));
+    const dur = document.createElement('input');
+    dur.type = 'number';
+    dur.min = '0'; dur.max = '240'; dur.step = '1';
+    if (ev.durationMin != null) dur.value = String(ev.durationMin);
+    fields.durationMin = dur;
+    wrap.appendChild(labelled(t('feeding.durationLabel.plain'), dur));
+  }
+  if (ev.type === 'weight') {
+    const w = document.createElement('input');
+    w.type = 'number'; w.step = '0.05'; w.value = String(ev.weightKg ?? '');
+    fields.weightKg = w;
+    wrap.appendChild(labelled(t('weight.weightLabel'), w));
+    const l = document.createElement('input');
+    l.type = 'number'; l.step = '0.5'; l.value = String(ev.lengthCm ?? '');
+    fields.lengthCm = l;
+    wrap.appendChild(labelled(t('weight.lengthLabel'), l));
+  }
+  // Timestamp on every event type.
+  const tInput = document.createElement('input');
+  tInput.type = 'datetime-local';
+  tInput.value = toLocalDateTimeInput(new Date(ev.timestamp));
+  fields.timestamp = tInput;
+  wrap.appendChild(labelled(t('edit.timestampLabel'), tInput));
+  // Notes.
+  const notes = document.createElement('textarea');
+  notes.rows = 3;
+  notes.maxLength = 500;
+  notes.style.cssText = 'width:100%;font:inherit;background:#0a0d0a;color:#c8e6c9;border:1px solid #1f2a1f;padding:0.3rem;';
+  notes.value = ev.notes ?? '';
+  fields.notes = notes;
+  wrap.appendChild(labelled(t('edit.notesLabel'), notes));
+
+  const choice = await dialog({
+    titleKey: 'edit.title',
+    content: wrap,
+    actions: [
+      { labelKey: 'edit.cancel', value: 'cancel', cancel: true },
+      { labelKey: 'edit.save', value: 'save', primary: true, defaultFocus: true },
+    ],
+  });
+  if (choice !== 'save') return;
+  const patch = {};
+  if (ev.type === 'feed') {
+    patch.side = fields.side.value;
+    patch.durationMin = fields.durationMin.value === '' ? null : Number(fields.durationMin.value);
+  }
+  if (ev.type === 'weight') {
+    patch.weightKg = Number(fields.weightKg.value);
+    patch.lengthCm = Number(fields.lengthCm.value);
+  }
+  patch.timestamp = new Date(fields.timestamp.value).toISOString();
+  patch.notes = fields.notes.value.trim();
+  const r = updateEvent(ev.id, patch);
+  if (!r.ok) {
+    if (r.error?.errorKey) toast(r.error.errorKey);
+    else toast('storage.replaceFailed');
+    return;
+  }
+  toast('edit.savedToast');
+  refresh();
 }
 
 function badge(label, n) {
