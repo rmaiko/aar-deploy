@@ -29,7 +29,9 @@ export const FIRST_BACKUP_MIN_EVENTS = 10;
 export const REMIND_LATER_HOURS = 24;
 
 // Back-date chip (FR-10, FR-13, FR-14).
-export const CHIP_OFFSETS_MIN = [0, 5, 15, 30];
+// FR-10 verbatim is [0, 5, 15, 30]; expanded to add 10m/20m by user
+// request — bundled into AMD-003 for Phase 6 to formalise.
+export const CHIP_OFFSETS_MIN = [0, 5, 10, 15, 20, 30];
 export const CHIP_RESET_INACTIVITY_MS = 30_000;
 export const BACKDATE_LIMIT_HOURS = 24;
 
