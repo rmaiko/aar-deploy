@@ -142,6 +142,12 @@ function renderActions(theme, state) {
     if (handleEmconBlocked()) return;
     openNoteDialog();
   }));
+  wrap.appendChild(make(tk('loadAction.tankerService'), 'loadAction.tankerService.plain', () => {
+    if (handleEmconBlocked()) return;
+    const r = logNote({ notes: t('loadAction.tankerService.marker'), when: getSelection() });
+    handleLogResult(r, 'event.confirm.tankerService', 'note');
+    chipReset();
+  }));
   return wrap;
 }
 

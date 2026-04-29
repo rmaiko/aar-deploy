@@ -24,6 +24,9 @@
   "loadAction.weight.plain": "Weight + length",
   "loadAction.note.themed": "FLIGHT NOTE",
   "loadAction.note.plain": "Add a note",
+  "loadAction.tankerService.themed": "TANKER SERVICE",
+  "loadAction.tankerService.plain": "Mom meds / self-care",
+  "loadAction.tankerService.marker": "💊 Tanker service",
 
   "feeding.durationLabel.themed": "Boom time (minutes, optional)",
   "feeding.durationLabel.plain": "Duration (minutes, optional)",
@@ -63,6 +66,7 @@
   "event.confirm.dirty": "Dirty diaper logged at {time}",
   "event.confirm.weight": "Weight & length logged at {time}",
   "event.confirm.note": "Note logged at {time}",
+  "event.confirm.tankerService": "Tanker service logged at {time}",
 
   "humour.feedPort.0": "BRAVO-1 latched on the port boom — boom time begins.",
   "humour.feedPort.1": "Port-side refuel commenced. Maintain pressure.",
