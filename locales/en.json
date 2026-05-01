@@ -450,5 +450,8 @@
 
   "common.cancel": "Cancel",
   "common.close": "Close",
-  "common.ok": "OK"
+  "common.ok": "OK",
+
+  "cloud.authCallback.signingIn": "Establishing recall beacon…",
+  "cloud.authCallback.failed": "This recall beacon is no longer valid."
 }

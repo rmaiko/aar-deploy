@@ -75,4 +75,8 @@ export const ROUTES = Object.freeze({
   PREFLIGHT: '#/preflight',
   RELAY: '#/relay',
   REPORT: '#/report',
+  // AMD-003: magic-link return target. Registered unconditionally so a
+  // stale link surfaces a friendly toast rather than silently routing
+  // to STATION.
+  AUTH_CALLBACK: '#/auth-callback',
 });
