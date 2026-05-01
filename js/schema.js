@@ -24,6 +24,7 @@ const TOP_LEVEL_KEYS = new Set([
   'lastNudgeDismissAt',
   'themePreference',
   'commsRelayDays',
+  'cloud',
 ]);
 
 // ISO-8601 with explicit offset: yyyy-mm-ddThh:mm[:ss[.fff]](Z|±hh:mm)
@@ -47,6 +48,19 @@ export function defaultAppState() {
     lastNudgeDismissAt: null,
     themePreference: null,
     commsRelayDays: 7,
+    cloud: defaultCloudState(),
+  };
+}
+
+// @req AMD-003
+// Local-only mirror of cloud sync session state. Never synced anywhere
+// (FR-220) — synced events go through the separate aar.syncQueue key.
+export function defaultCloudState() {
+  return {
+    enabled: false,
+    lastPulledAt: null,
+    activeFamilyId: null,
+    rememberedEmail: null,
   };
 }
 
@@ -160,7 +174,22 @@ export function validate(payload) {
   if (payload.settings != null && !isPlainObject(payload.settings)) {
     return { ok: false, error: { code: 'shape', message: 'settings must be an object' } };
   }
+  if (payload.cloud != null) {
+    const err = validateCloud(payload.cloud);
+    if (err) return { ok: false, error: { code: 'cloud', message: err } };
+  }
   return { ok: true, value: payload };
+}
+
+function validateCloud(c) {
+  if (!isPlainObject(c)) return 'cloud must be an object';
+  if (typeof c.enabled !== 'boolean') return 'cloud.enabled must be boolean';
+  if (c.lastPulledAt != null && (typeof c.lastPulledAt !== 'string' || !ISO_OFFSET_RE.test(c.lastPulledAt))) {
+    return 'cloud.lastPulledAt must be ISO-8601 with offset, or null';
+  }
+  if (c.activeFamilyId != null && typeof c.activeFamilyId !== 'string') return 'cloud.activeFamilyId must be string or null';
+  if (c.rememberedEmail != null && typeof c.rememberedEmail !== 'string') return 'cloud.rememberedEmail must be string or null';
+  return null;
 }
 
 // @req FR-92
@@ -178,6 +207,7 @@ export function applyDefaults(payload) {
   for (const k of ['lastExportAt', 'firstRunDismissed', 'lastVisitDate', 'lastNudgeDismissAt', 'themePreference', 'commsRelayDays']) {
     if (k in payload) out[k] = payload[k];
   }
+  if (isPlainObject(payload.cloud)) out.cloud = { ...def.cloud, ...payload.cloud };
   return out;
 }
 
