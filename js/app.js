@@ -187,6 +187,20 @@ export async function boot({ root, urlSearchParams = new URLSearchParams(locatio
 
   routerStart();
 
+  // AMD-003: surface Supabase auth errors that arrive as QUERY PARAMS
+  // rather than the PKCE-success fragment. Happens when the magic-link
+  // token was already consumed (typically by an email client's link
+  // pre-fetch / preview), so Supabase redirects back with
+  // ?error=access_denied&error_code=otp_expired.
+  const authErr = urlSearchParams.get('error_code') || urlSearchParams.get('error');
+  if (authErr) {
+    toast('cloud.authCallback.failed', { code: authErr });
+    // Strip the error params from the URL so a refresh doesn't re-toast.
+    if (typeof history !== 'undefined') {
+      history.replaceState({}, '', location.pathname + (location.hash || ''));
+    }
+  }
+
   // AMD-003: resume cloud sync if the user previously opted in.
   // Lazy-imported so non-cloud users never load it. Failure here is
   // non-fatal — the app keeps working in local-only mode.
