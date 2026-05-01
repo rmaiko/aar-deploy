@@ -444,9 +444,13 @@ function renderFamilies(cloudState) {
   wrap.appendChild(el('h3', { text: t('cloud.family.heading'), style: 'font-size:0.8rem;' }));
 
   if (mn.families === null) {
-    // Trigger load; render placeholder.
+    // First render after sign-in: kick off the load and render the
+    // create/redeem affordances immediately. If the load hangs or
+    // fails, the user still has a path forward (FR-204 friendly fail).
     onLoadFamilies();
-    wrap.appendChild(el('p', { text: '…', style: 'font-size:0.75rem;color:#aac8aa;' }));
+    wrap.appendChild(el('p', { text: t('cloud.family.none'), style: 'font-size:0.75rem;' }));
+    wrap.appendChild(renderCreateFamilyForm());
+    wrap.appendChild(renderRedeemForm());
     return wrap;
   }
 
@@ -618,7 +622,19 @@ async function onSignOut() {
 }
 
 async function onLoadFamilies() {
-  const r = await auth.listMyFamilies();
+  let r;
+  try {
+    r = await auth.listMyFamilies();
+  } catch (e) {
+    // Catch-all so a thrown rejection (network, schema cache, etc.)
+    // can never strand the user on a loading placeholder. The create/
+    // redeem forms are already rendered above; we just surface a hint.
+    console.error('listMyFamilies threw:', e);
+    mn.families = [];
+    mn.errorKey = 'cloud.family.create.failed';
+    refresh();
+    return;
+  }
   if (!r.ok) { mn.families = []; refresh(); return; }
   mn.families = r.families;
   // First sign-in with no active family yet — pick the first if any.
