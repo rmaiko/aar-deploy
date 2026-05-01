@@ -186,6 +186,13 @@ export async function boot({ root, urlSearchParams = new URLSearchParams(locatio
   }
 
   routerStart();
+
+  // AMD-003: resume cloud sync if the user previously opted in.
+  // Lazy-imported so non-cloud users never load it. Failure here is
+  // non-fatal — the app keeps working in local-only mode.
+  import('./cloud.js')
+    .then((cloud) => cloud.boot())
+    .catch((e) => console.error('cloud boot failed:', e));
 }
 
 if (typeof window !== 'undefined' && !window.__AAR_TEST_MODE__) {
