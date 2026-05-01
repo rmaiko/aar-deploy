@@ -105,8 +105,11 @@ function loadBundle() {
 }
 
 async function ensureClient() {
-  if (!cloudConfigured()) throw { code: ERR.CLOUD_UNCONFIGURED, message: 'SUPABASE_URL / SUPABASE_ANON_KEY not set' };
+  // A previously-set client (real or test fake) bypasses the
+  // configuration gate. cloudConfigured() asks "can we build a client";
+  // having one already is a stronger affirmative.
   if (client) return client;
+  if (!cloudConfigured()) throw { code: ERR.CLOUD_UNCONFIGURED, message: 'SUPABASE_URL / SUPABASE_ANON_KEY not set' };
   const bundle = await loadBundle();
   client = bundle.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
