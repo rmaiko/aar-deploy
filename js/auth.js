@@ -165,6 +165,16 @@ export function getSession() {
 
 export function getActiveFamilyId() { return activeFamilyId; }
 
+// @req AMD-003
+// Lazy accessor for the supabase-js client. C-26 (sync.js) calls this
+// to share the same authenticated client and session as C-25.  Returns
+// null when cloud is unconfigured so callers can short-circuit without
+// throwing.
+export async function getClient() {
+  if (!cloudConfigured()) return null;
+  try { return await ensureClient(); } catch { return null; }
+}
+
 // ── Auth (FR-205, ADR-019) ────────────────────────────────────────────
 
 // @req FR-205
