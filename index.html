@@ -10,13 +10,19 @@
        boot SCHEMA_VERSION check is the durable mitigation. -->
   <meta http-equiv="Cache-Control" content="no-cache" />
 
-  <!-- Content-Security-Policy per ADR-012 (post-Phase-4 §5.3 fix:
-       connect-src 'self' for the boot-time locale fetch). -->
+  <!-- Content-Security-Policy per ADR-012 + ADR-016 (AMD-003 cloud sync).
+       connect-src widens to the Supabase project origin only when the
+       __SUPABASE_PROJECT_REF__ sentinel is replaced by the real project
+       ref at provisioning time (AMD-003 Appendix A). With the sentinel
+       present, the token is invalid and ignored by the browser, leaving
+       effective connect-src = 'self' — which matches FR-200's off-state
+       guarantee (no Supabase request issued while cloud is disabled). -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
                  script-src 'self' 'sha256-IHeNPfCHzCvtX6OsaEdIfL37hqJtjKx4DS4aBxV0Rk4=';
                  style-src 'self';
-                 connect-src 'self';
+                 connect-src 'self' https://__SUPABASE_PROJECT_REF__.supabase.co
+                              wss://__SUPABASE_PROJECT_REF__.supabase.co;
                  img-src 'self' data:;
                  base-uri 'none';
                  form-action 'none';
