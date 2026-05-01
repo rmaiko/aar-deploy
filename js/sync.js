@@ -56,6 +56,9 @@ let setCloud = () => {};
 // Drain re-entrancy + advisory dedup.
 let draining = false;
 let advisoryActive = false;
+let rlsDropAdvised = false;       // FR-216 sibling: one-time toast for RLS drops
+let pullDebounceTimer = null;     // FR-212: 1s debounce on visibility-triggered pulls
+const PULL_DEBOUNCE_MS = 1000;
 
 // ── Public surface ────────────────────────────────────────────────────
 
@@ -88,7 +91,14 @@ export function start() {
 
   if (typeof window !== 'undefined') {
     onlineHandler = () => drainSoon();
-    visibilityHandler = () => { if (document.visibilityState === 'visible') pullNow(); };
+    visibilityHandler = () => {
+      if (document.visibilityState !== 'visible') return;
+      // FR-212 single-fetch-per-focus: coalesce rapid tab toggles into
+      // one network round-trip. The trailing edge wins — we always
+      // pull at least once per visible burst.
+      if (pullDebounceTimer) clearTimeout(pullDebounceTimer);
+      pullDebounceTimer = setTimeout(() => { pullDebounceTimer = null; pullNow(); }, PULL_DEBOUNCE_MS);
+    };
     window.addEventListener('online', onlineHandler);
     document.addEventListener('visibilitychange', visibilityHandler);
   }
@@ -109,6 +119,7 @@ export function stop({ dropQueue = false } = {}) {
   if (unsubSignedOut) { unsubSignedOut(); unsubSignedOut = null; }
   if (unsubFamily)    { unsubFamily();    unsubFamily    = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (pullDebounceTimer) { clearTimeout(pullDebounceTimer); pullDebounceTimer = null; }
   if (typeof window !== 'undefined') {
     if (onlineHandler) window.removeEventListener('online', onlineHandler);
     if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler);
@@ -117,6 +128,7 @@ export function stop({ dropQueue = false } = {}) {
   }
   lastEventsMap = new Map();
   advisoryActive = false;
+  rlsDropAdvised = false;
   if (dropQueue) writeQueue([]);
 }
 
@@ -318,6 +330,7 @@ async function drain() {
       // Permanent rejections (RLS / unique violation already-applied)
       // drop the head so a single bad delta cannot wedge the queue.
       if (result.permanent) {
+        if (result.rls) raiseRlsDropAdvisory();
         queue = queue.slice(1);
         writeQueue(queue);
         continue;
@@ -340,7 +353,7 @@ async function applyDelta(c, entry) {
       // already present at the same or newer version — treat as success.
       if (String(error.code) === '23505') return { ok: true };
       // 42501 = insufficient_privilege (RLS). Permanent for this caller.
-      if (String(error.code) === '42501') return { ok: false, permanent: true, error };
+      if (String(error.code) === '42501') return { ok: false, permanent: true, rls: true, error };
       return { ok: false, error };
     }
     if (entry.op === 'delete') {
@@ -350,7 +363,7 @@ async function applyDelta(c, entry) {
         .eq('family_id', entry.row.family_id)
         .eq('client_id', entry.client_id);
       if (!error) return { ok: true };
-      if (String(error.code) === '42501') return { ok: false, permanent: true, error };
+      if (String(error.code) === '42501') return { ok: false, permanent: true, rls: true, error };
       return { ok: false, error };
     }
     return { ok: false, permanent: true, error: { message: `unknown op: ${entry.op}` } };
@@ -363,6 +376,18 @@ function raiseAdvisory() {
   if (advisoryActive) return;
   advisoryActive = true;
   try { warnSink('cloud.sync.advisory', { key: 'cloud.sync.notReachedYet' }); }
+  catch (e) { console.error('warnSink threw:', e); }
+}
+
+// First time a delta is rejected for permission reasons, surface a
+// distinct one-time advisory. Differs from raiseAdvisory() (queue
+// pile-up) by topic and copy. After it fires once, subsequent RLS
+// drops are silent for the rest of the session — the bad delta is
+// already gone and re-warning every time would just be noise.
+function raiseRlsDropAdvisory() {
+  if (rlsDropAdvised) return;
+  rlsDropAdvised = true;
+  try { warnSink('cloud.sync.rlsDrop', { key: 'cloud.sync.permissionDenied' }); }
   catch (e) { console.error('warnSink threw:', e); }
 }
 
@@ -397,7 +422,9 @@ export function _resetForTests() {
   lastEventsMap = new Map();
   draining = false;
   advisoryActive = false;
+  rlsDropAdvised = false;
   drainScheduled = false;
+  if (pullDebounceTimer) { clearTimeout(pullDebounceTimer); pullDebounceTimer = null; }
   warnSink = () => {};
   getCloud = () => ({ enabled: false, activeFamilyId: null, lastPulledAt: null });
   setCloud = () => {};
