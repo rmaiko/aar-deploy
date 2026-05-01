@@ -13,9 +13,9 @@
 // dashboard values and update the __SUPABASE_PROJECT_REF__ sentinel in
 // index.html's CSP to the same project ref.
 
-export const SUPABASE_URL = null;       // e.g. 'https://abcd1234.supabase.co'
-export const SUPABASE_ANON_KEY = null;  // e.g. 'eyJhbGciOi…' (public anon key)
-export const SUPABASE_REGION = 'EU (Frankfurt / Ireland)'; // FR-219 privacy notice copy
+export const SUPABASE_URL = 'https://wkitzikustlkhlmrtnuu.supabase.co';       // e.g. 'https://abcd1234.supabase.co'
+export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndraXR6aWt1c3Rsa2hsbXJ0bnV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1MDA3OTQsImV4cCI6MjA5MzA3Njc5NH0.TkWodn7rfFE-J0i_ldXShPOTf7lh3AzRH1ARyO5qU1s';  // e.g. 'eyJhbGciOi…' (public anon key)
+export const SUPABASE_REGION = 'West EU (Paris)'; // FR-219 privacy notice copy
 
 export function cloudConfigured() {
   return typeof SUPABASE_URL === 'string'

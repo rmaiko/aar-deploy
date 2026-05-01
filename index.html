@@ -11,18 +11,17 @@
   <meta http-equiv="Cache-Control" content="no-cache" />
 
   <!-- Content-Security-Policy per ADR-012 + ADR-016 (AMD-003 cloud sync).
-       connect-src widens to the Supabase project origin only when the
-       __SUPABASE_PROJECT_REF__ sentinel is replaced by the real project
-       ref at provisioning time (AMD-003 Appendix A). With the sentinel
-       present, the token is invalid and ignored by the browser, leaving
-       effective connect-src = 'self' — which matches FR-200's off-state
-       guarantee (no Supabase request issued while cloud is disabled). -->
+       connect-src is widened to the project's Supabase origin (REST +
+       reserved Realtime wss). Cloud sync is opt-in and off-by-default;
+       with cloud disabled the runtime never makes a request to these
+       hosts (FR-200 / NFR-A3) — the CSP just stops acting as a deny
+       gate the moment the user flips the toggle. -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
                  script-src 'self' 'sha256-IHeNPfCHzCvtX6OsaEdIfL37hqJtjKx4DS4aBxV0Rk4=';
                  style-src 'self';
-                 connect-src 'self' https://__SUPABASE_PROJECT_REF__.supabase.co
-                              wss://__SUPABASE_PROJECT_REF__.supabase.co;
+                 connect-src 'self' https://wkitzikustlkhlmrtnuu.supabase.co
+                              wss://wkitzikustlkhlmrtnuu.supabase.co;
                  img-src 'self' data:;
                  base-uri 'none';
                  form-action 'none';
