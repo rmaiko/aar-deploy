@@ -9,6 +9,8 @@ import { isEmcon, getImportedState } from '../emcon.js';
 import { navigate } from '../router.js';
 import { ROUTES, MISSION_LOG_PAGE_SIZE } from '../config.js';
 import { weightLengthCharts } from './charts.js';
+import { renderIntervalHistograms } from './intervals.js';
+import { isReminderEnvelope } from '../reminders.js';
 
 let mountEl = null;
 let unsub = null;
@@ -46,6 +48,9 @@ function refresh() {
     }));
     mountEl.appendChild(wrap);
   }
+  // AMD-010: inter-event interval histograms (feed/wet/dirty).
+  const intervals = renderIntervalHistograms(state);
+  if (intervals) mountEl.appendChild(intervals);
   const entries = combineEntries(state);
   if (entries.length === 0) {
     mountEl.appendChild(el('p', { className: 'empty', text: t('log.empty') }));
@@ -89,7 +94,10 @@ function renderHeader(theme) {
 // @req FR-108
 // @req FR-110
 function combineEntries(state) {
-  const events = (state.events ?? []).map((e) => ({ kind: 'event', ...e }));
+  const events = (state.events ?? [])
+    // Hide reminder envelope events — they're machinery, not user activity.
+    .filter((e) => !(e.type === 'note' && isReminderEnvelope(e.notes)))
+    .map((e) => ({ kind: 'event', ...e }));
   const milestones = (state.milestones ?? []).map((m) => ({ kind: 'milestone', ...m, timestamp: m.awardedAt }));
   const sys = (state.system_log ?? []).map((s) => ({ kind: 'system', ...s }));
   return [...events, ...milestones, ...sys].sort((a, b) => tsMs(b) - tsMs(a));

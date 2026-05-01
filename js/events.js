@@ -278,9 +278,10 @@ export function cancelFeedTimer() {
 
 // @req FR-01
 // @req FR-03
-// Quick-log path for chip ≠ Now: timestamp is the chip-resolved time,
-// duration is the elapsed minutes from chip-time to now (so a
-// "15m ago" tap records a 15-minute feed that ended at now).
+// Quick-log path: timestamp is the chip-resolved time, duration is the
+// elapsed minutes from chip-time to now (so a "15m ago" tap records a
+// 15-minute feed that ended at now). Retained for tests + import/CSV
+// flows; the in-app CONTACT modal uses logFeed directly.
 export function logFeedWithChipDuration({ side, when }) {
   gate('logFeed');
   if (side !== 'port' && side !== 'starboard') {
