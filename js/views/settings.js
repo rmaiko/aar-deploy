@@ -19,7 +19,7 @@ let mountEl = null;
 // Mission Network local UI state (not persisted — survives only the
 // open Settings session).
 let mn = {
-  step: 'idle',           // 'idle' | 'awaitingMagicLink' | 'awaitingOtp'
+  step: 'idle',           // 'idle' | 'awaitingOtp'
   emailDraft: '',
   otpDraft: '',
   busy: false,
@@ -398,6 +398,14 @@ function renderMissionNetwork(state) {
 }
 
 function renderSignInForm() {
+  // Pre-fill the email field from the persisted rememberedEmail so a
+  // returning signed-out user (session expired, explicit Sign out, or
+  // post-disable re-enable) doesn't have to retype what we already saved.
+  if (!mn.emailDraft) {
+    const remembered = getState().cloud?.rememberedEmail;
+    if (typeof remembered === 'string' && remembered) mn.emailDraft = remembered;
+  }
+
   const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:0.4rem;' });
   wrap.appendChild(el('h3', { text: t('cloud.signIn.heading'), style: 'font-size:0.8rem;' }));
 
@@ -410,13 +418,13 @@ function renderSignInForm() {
   wrap.appendChild(emailInput);
 
   const sendBtn = el('button', {
-    type: 'button', className: 'tap', text: t('cloud.signIn.sendLink'),
-    on: { click: () => onSendMagicLink(mn.emailDraft) },
+    type: 'button', className: 'tap', text: t('cloud.signIn.sendCode'),
+    on: { click: () => onSendSignInCode(mn.emailDraft) },
   });
   if (mn.busy) sendBtn.disabled = true;
   wrap.appendChild(sendBtn);
 
-  if (mn.step === 'awaitingMagicLink' || mn.step === 'awaitingOtp') {
+  if (mn.step === 'awaitingOtp') {
     wrap.appendChild(el('p', { text: t('cloud.signIn.sent'), style: 'font-size:0.75rem;color:#aac8aa;' }));
     wrap.appendChild(el('p', { text: t('cloud.signIn.otpHint'), style: 'font-size:0.75rem;' }));
     const otpInput = el('input', {
@@ -587,9 +595,9 @@ async function onDisable() {
   refresh();
 }
 
-async function onSendMagicLink(email) {
+async function onSendSignInCode(email) {
   mn.busy = true; mn.errorKey = null; refresh();
-  const r = await auth.sendMagicLink(email);
+  const r = await auth.sendSignInCode(email);
   mn.busy = false;
   if (!r.ok) {
     mn.errorKey = r.error.code === 'INVALID_EMAIL' ? 'cloud.signIn.invalidEmail' : 'cloud.signIn.failed';
@@ -598,7 +606,7 @@ async function onSendMagicLink(email) {
   }
   // Persist the email so the form is pre-filled on the next reload.
   setCloudPatch({ rememberedEmail: email.trim() });
-  mn.step = 'awaitingMagicLink';
+  mn.step = 'awaitingOtp';
   refresh();
 }
 
@@ -618,6 +626,9 @@ async function onVerifyOtp(email, code) {
 async function onSignOut() {
   mn.busy = true; refresh();
   await auth.signOut();
+  // Clear active-wing identity from appState so the station header
+  // stops claiming the user is on that wing once their session is gone.
+  setCloudPatch({ activeFamilyId: null, activeFamilyName: null });
   // signedOut listener will refresh.
 }
 
@@ -643,23 +654,67 @@ async function onLoadFamilies() {
     await onSetActiveFamily(r.families[0].id, { silent: true });
     return; // onSetActiveFamily refreshes
   }
+  // Backfill activeFamilyName so the loadmaster station header can
+  // surface the wing name on reload, and pick up server-side renames.
+  if (cur) {
+    const fam = r.families.find((f) => f.id === cur);
+    const persistedName = getState().cloud?.activeFamilyName || null;
+    if (fam && fam.name !== persistedName) {
+      setCloudPatch({ activeFamilyName: fam.name });
+    }
+  }
   refresh();
 }
 
+// @req FR-210
+// Active-wing change. Distinguishes three modes:
+//   - silent first-pick (no prior activeFamilyId, called from onLoadFamilies):
+//     just adopt the id and start sync; no merge, no event-replace.
+//   - first activation (no prior activeFamilyId, user-driven via create or
+//     redeem): adopt the id; the caller decides whether to FR-203 merge.
+//   - switch (prior activeFamilyId differs): replace the local Mission Log
+//     with the new wing's events (architecture §5.11.2 wing switch — cache
+//     previous wing's tree, dispatch with new wing's cache or empty, fresh
+//     pull). Reset lastPulledAt so pullNow fetches the full wing history.
 async function onSetActiveFamily(id, { silent = false } = {}) {
+  const prev = getState().cloud?.activeFamilyId || null;
+  const isSwitch = !!prev && prev !== id;
+  const family = (mn.families || []).find((f) => f.id === id);
+  const name = family ? family.name : null;
+
+  if (isSwitch) {
+    // Replace the local events with empty before pullNow runs — keeping
+    // the previous wing's events would (a) leak them into the new wing
+    // via sync.js's diff watcher when the user logs the next event, and
+    // (b) confuse the user by mixing two wings' Mission Logs.
+    // appState/replace preserves cloud subtree, just clears events.
+    dispatch({ type: 'appState/replace', payload: { events: [] } });
+    setCloudPatch({ activeFamilyId: id, activeFamilyName: name, lastPulledAt: null });
+  } else {
+    setCloudPatch({ activeFamilyId: id, activeFamilyName: name });
+  }
+  // appState must be updated BEFORE auth emits familyChanged: sync.js's
+  // listener calls pullNow() which reads cloud.activeFamilyId from
+  // appState. Reverse order = pullNow short-circuits NOT_READY.
   auth.setActiveFamily(id);
-  setCloudPatch({ activeFamilyId: id });
   // Clear cached invites so the panel reloads against the new family.
   mn.invites = null;
-  // FR-203: if the queue is empty (first activation), seed the merge.
-  if (!silent) await cloud.enableAndMerge();
-  else await cloud.start();
+  // FR-203 (one-time merge upload on opt-in) is the responsibility of the
+  // caller that triggered the *first* activeFamilyId after enable — see
+  // onCreateFamily. Switching wings or joining a wing must NOT auto-dump
+  // local events: those events either belong to the previous wing
+  // (already synced) or to a wing the user is joining as a member.
+  await cloud.start();
   refresh();
 }
 
 async function onCreateFamily(name) {
   if (!name || !name.trim()) { mn.errorKey = 'cloud.family.create.failed'; refresh(); return; }
   mn.busy = true; refresh();
+  // FR-203 gate — capture whether the user has any active wing yet.
+  // Only a brand-new wing reached as the user's *first* activation
+  // should receive the one-time local-events merge upload.
+  const hadActiveBefore = !!(getState().cloud?.activeFamilyId);
   const r = await auth.createFamily(name.trim());
   mn.busy = false;
   if (!r.ok) { mn.errorKey = 'cloud.family.create.failed'; refresh(); return; }
@@ -667,6 +722,9 @@ async function onCreateFamily(name) {
   mn.families = null;
   await onLoadFamilies();
   await onSetActiveFamily(r.family.id);
+  if (!hadActiveBefore) {
+    await cloud.enableAndMerge();
+  }
 }
 
 async function onRedeemInvite(code) {
@@ -721,11 +779,27 @@ async function onRevokeInvite(inviteId) {
 }
 
 async function onCopyInvite(code) {
+  const link = `${location.origin}${location.pathname}#/invite?code=${encodeURIComponent(code)}`;
+  let ok = false;
   try {
-    const link = `${location.origin}${location.pathname}#/invite?code=${encodeURIComponent(code)}`;
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(link);
-    toast('cloud.invites.copied');
-  } catch { /* swallow — clipboard denial is harmless */ }
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(link);
+      ok = true;
+    }
+  } catch (e) { console.warn('clipboard.writeText failed:', e); }
+  if (!ok) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = link;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch (e) { console.warn('execCommand copy failed:', e); }
+  }
+  toast(ok ? 'cloud.invites.copied' : 'cloud.invites.copyFailed');
 }
 
 function setCloudPatch(patch) {

@@ -40,7 +40,7 @@ function refresh() {
   const state = isEmcon() ? (getImportedState() ?? getState()) : getState();
   const theme = getActiveTheme();
   mountEl.innerHTML = '';
-  mountEl.appendChild(renderHeader(theme));
+  mountEl.appendChild(renderHeader(theme, state));
   mountEl.appendChild(renderTimerPanel(theme));
   mountEl.appendChild(renderActions(theme, state));
   mountEl.appendChild(renderLastContact(theme, state));
@@ -68,11 +68,18 @@ function el(tag, opts = {}, children = []) {
 
 // @req FR-15
 // @req FR-69
-function renderHeader(theme) {
+function renderHeader(theme, state) {
   const h = el('header', { className: 'station-header' });
   const titleWrap = el('div', { className: 'station-titles' });
   titleWrap.appendChild(el('h1', { text: t(`app.title.${theme}`) }));
-  titleWrap.appendChild(el('p', { className: 'sub', text: t(`app.subtitle.${theme}`) }));
+  // When cloud is enabled and a wing is active, the subtitle shows the
+  // wing's name so the user can tell at a glance which family's data
+  // they're looking at. EMCON imports always use the placeholder.
+  const cloud = (isEmcon() ? null : state?.cloud) || {};
+  const subtitle = (cloud.enabled && cloud.activeFamilyName)
+    ? cloud.activeFamilyName
+    : t(`app.subtitle.${theme}`);
+  titleWrap.appendChild(el('p', { className: 'sub', text: subtitle }));
   h.appendChild(titleWrap);
   const nav = el('nav', { className: 'station-nav' });
   nav.appendChild(el('button', {

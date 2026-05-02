@@ -104,6 +104,17 @@ export function start() {
   }
 
   pollTimer = setInterval(() => { if (isOnline()) drainSoon(); }, POLL_INTERVAL_MS);
+
+  // Boot race-guard: supabase-js's persistSession may have already
+  // rehydrated the session and fired INITIAL_SESSION (→ signedIn)
+  // before this listener subscribed above — in which case we missed
+  // the auto-pull and the user's invited-family events would only
+  // appear on the next tab-focus. Trigger an explicit drain + pull
+  // here so the first paint after reload is current.
+  if (auth.getSession()) {
+    drainSoon();
+    pullNow();
+  }
 }
 
 // @req FR-204
@@ -181,6 +192,13 @@ export async function pullNow() {
   const incoming = (data || []).map(rowToEvent).filter((e) => e && !seenIds.has(e.id));
 
   if (incoming.length > 0) {
+    // Prime the diff baseline with the incoming rows BEFORE dispatch so
+    // onStateChange does not see them as locally-authored "new" events
+    // and re-enqueue them as upserts. Re-uploading another member's
+    // event would fail RLS WITH CHECK on events_member_update
+    // (created_by must match the original author) and trip the one-shot
+    // permission-denied advisory for no real reason.
+    for (const ev of incoming) lastEventsMap.set(ev.id, ev);
     const merged = applyDefaults({ ...getState(), events: [...cur, ...incoming] });
     dispatch({ type: 'state/set', payload: merged });
   }

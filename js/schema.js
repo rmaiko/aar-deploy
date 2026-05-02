@@ -60,6 +60,7 @@ export function defaultCloudState() {
     enabled: false,
     lastPulledAt: null,
     activeFamilyId: null,
+    activeFamilyName: null,
     rememberedEmail: null,
   };
 }
@@ -188,6 +189,7 @@ function validateCloud(c) {
     return 'cloud.lastPulledAt must be ISO-8601 with offset, or null';
   }
   if (c.activeFamilyId != null && typeof c.activeFamilyId !== 'string') return 'cloud.activeFamilyId must be string or null';
+  if (c.activeFamilyName != null && typeof c.activeFamilyName !== 'string') return 'cloud.activeFamilyName must be string or null';
   if (c.rememberedEmail != null && typeof c.rememberedEmail !== 'string') return 'cloud.rememberedEmail must be string or null';
   return null;
 }

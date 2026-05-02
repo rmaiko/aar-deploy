@@ -65,6 +65,13 @@ small { color: var(--fg-dim); font-size: 0.75rem; }
   cursor: not-allowed;
 }
 .tap.danger { color: var(--warn); border-color: var(--warn); }
+.tap.active {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.tap.active:focus-visible { outline-color: var(--bg); }
 
 .station-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
 .station-titles { flex: 1 1 auto; min-width: 0; }
@@ -76,6 +83,8 @@ small { color: var(--fg-dim); font-size: 0.75rem; }
 /* The first button (CONTACT) spans full width to emphasise it as the
    primary action — feeding is the most-frequent log. */
 .log-actions .tap:first-child { grid-column: 1 / -1; min-height: 72px; }
+/* MAINTENANCE LOG (last child) also spans full width to match CONTACT. */
+.log-actions .tap:last-child { grid-column: 1 / -1; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
 .chip { font-size: 0.85rem; padding: 0.3rem 0.7rem; min-height: 44px; }

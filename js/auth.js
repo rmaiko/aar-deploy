@@ -13,11 +13,12 @@
 //     cloudConfigured() is false, so callers never accidentally hit
 //     the network through this module.
 //
-// ADR-019 (magic-link only): the only sign-in flow is email OTP.
-// supabase-js handles the verify side; we expose both the link-tap
-// path (#/auth-callback → exchangeCodeForSession) and a same-device
-// 6-digit OTP fallback (verifyOtp) for the cross-device case in
-// US-27 AC-10.
+// ADR-019 (email OTP only): the only sign-in flow is email OTP. The
+// operator removes `{{ .ConfirmationURL }}` from the magic-link email
+// template so users only ever see a 6-digit `{{ .Token }}`. The
+// magic-link redirect path is intentionally not used (works poorly
+// with email-client link pre-fetch — see history of AMD-003 step 11).
+// We call signInWithOtp to request and verifyOtp to consume.
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY, cloudConfigured } from './cloud-config.js';
 
@@ -114,7 +115,7 @@ async function ensureClient() {
   client = bundle.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       flowType: 'pkce',
-      detectSessionInUrl: false,    // the router triggers exchangeCodeForSession itself
+      detectSessionInUrl: false,    // OTP-only flow; no URL exchange happens
       autoRefreshToken: true,
       persistSession: true,
       storage: window.localStorage, // FR-217: sb-<ref>-auth-token
@@ -123,8 +124,13 @@ async function ensureClient() {
   client.auth.onAuthStateChange((event, session) => {
     const prev = currentSession;
     currentSession = session || null;
-    if (event === 'SIGNED_IN' && !prev) emit('signedIn', getSession());
-    if (event === 'SIGNED_OUT')          emit('signedOut', null);
+    // supabase-js v2 fires INITIAL_SESSION (not SIGNED_IN) when persistSession
+    // rehydrates a saved session on createClient. Treat it as a sign-in so
+    // listeners (settings panel, sync) refresh on reload.
+    const becameSignedIn =
+      (event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && session)) && !prev;
+    if (becameSignedIn) emit('signedIn', getSession());
+    if (event === 'SIGNED_OUT') emit('signedOut', null);
     // TOKEN_REFRESHED / USER_UPDATED don't fire signedIn again.
   });
   return client;
@@ -182,17 +188,18 @@ export async function getClient() {
 
 // @req FR-205
 // @req US-27
-export async function sendMagicLink(email) {
+// Trigger the OTP email. The Supabase email template (operator-owned)
+// renders only the 6-digit `{{ .Token }}`; we deliberately do not pass
+// `emailRedirectTo` because the magic-link path is not exposed in the
+// UI.
+export async function sendSignInCode(email) {
   if (!isEmail(email)) return fail(ERR.INVALID_EMAIL);
   let c;
   try { c = await ensureClient(); } catch (e) { return fail(e.code, e.message); }
   try {
-    const redirectTo = (typeof location !== 'undefined')
-      ? `${location.origin}${location.pathname}#/auth-callback`
-      : undefined;
     const { error } = await c.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
+      options: { shouldCreateUser: true },
     });
     if (error) return fail(ERR.AUTH_FAILED, error.message);
     return { ok: true };
@@ -203,8 +210,8 @@ export async function sendMagicLink(email) {
 
 // @req FR-205
 // @req US-27
-// Same-device 6-digit OTP fallback for the cross-device case where the
-// link arrives on a different device than the one that requested it.
+// Consume the 6-digit code from the OTP email. Sole sign-in finalise
+// path — see header comment.
 export async function verifyOtp(email, code) {
   if (!isEmail(email)) return fail(ERR.INVALID_EMAIL);
   if (typeof code !== 'string' || !/^\d{6}$/.test(code.trim())) return fail(ERR.INVALID_CODE);
@@ -214,25 +221,6 @@ export async function verifyOtp(email, code) {
     const { data, error } = await c.auth.verifyOtp({
       email: email.trim(), token: code.trim(), type: 'email',
     });
-    if (error) return fail(ERR.AUTH_FAILED, error.message);
-    return { ok: true, session: data.session ?? null };
-  } catch (e) {
-    return fail(ERR.NETWORK, String(e?.message ?? e));
-  }
-}
-
-// @req FR-205
-// @req US-27
-// Called by the #/auth-callback router target. Reads `code` from the URL
-// fragment and exchanges it (PKCE) for a session.
-export async function exchangeCodeForSession(href) {
-  let c;
-  try { c = await ensureClient(); } catch (e) { return fail(e.code, e.message); }
-  try {
-    // supabase-js accepts the full URL; we strip non-fragment scaffolding
-    // to be tolerant of the hash-router prefix.
-    const url = href || (typeof location !== 'undefined' ? location.href : '');
-    const { data, error } = await c.auth.exchangeCodeForSession(url);
     if (error) return fail(ERR.AUTH_FAILED, error.message);
     return { ok: true, session: data.session ?? null };
   } catch (e) {
@@ -346,9 +334,11 @@ export async function generateInvite(familyId) {
   try { c = await ensureClient(); } catch (e) { return fail(e.code, e.message); }
   const code = generateCode(16);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const userId = getSession()?.userId;
+  if (!userId) return fail(ERR.NO_SESSION);
   const { data, error } = await c
     .from('family_invites')
-    .insert({ family_id: familyId, code, max_uses: 1, expires_at: expiresAt })
+    .insert({ family_id: familyId, code, max_uses: 1, expires_at: expiresAt, created_by: userId })
     .select()
     .single();
   if (error) {

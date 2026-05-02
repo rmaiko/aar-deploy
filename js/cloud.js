@@ -23,7 +23,7 @@ async function ensureSync() {
 }
 
 function getCloud() {
-  return getState().cloud || { enabled: false, lastPulledAt: null, activeFamilyId: null, rememberedEmail: null };
+  return getState().cloud || { enabled: false, lastPulledAt: null, activeFamilyId: null, activeFamilyName: null, rememberedEmail: null };
 }
 
 function setCloud(patch) {
@@ -42,7 +42,30 @@ export async function boot() {
   // Settings UI can read it before the first signedIn event lands.
   auth.init({ warnSink, initialActiveFamilyId: cloud.activeFamilyId || null });
   if (!cloud.enabled) return;
+  // Force-create the supabase client so persistSession can rehydrate the
+  // user's session from localStorage on reload. Without this, nothing on
+  // the boot path triggers ensureClient() and getSession() stays null
+  // until the user takes a network-touching action — which strands them
+  // on the sign-in form even though their session is still valid.
+  try { await auth.getClient(); } catch (e) { console.error('cloud client bootstrap failed:', e); }
   await start();
+  // Backfill activeFamilyName so the loadmaster subtitle has a wing
+  // name to render after reload, without waiting for the user to open
+  // Settings. Runs once on signedIn (covers both INITIAL_SESSION and
+  // a fresh sign-in landing here).
+  auth.on('signedIn', backfillActiveFamilyName);
+  if (auth.getSession()) backfillActiveFamilyName();
+}
+
+async function backfillActiveFamilyName() {
+  const c = getCloud();
+  if (!c.activeFamilyId) return;
+  let r;
+  try { r = await auth.listMyFamilies(); } catch { return; }
+  if (!r || !r.ok) return;
+  const fam = r.families.find((f) => f.id === c.activeFamilyId);
+  if (!fam) return;
+  if (fam.name !== c.activeFamilyName) setCloud({ activeFamilyName: fam.name });
 }
 
 // @req AMD-003
@@ -64,7 +87,7 @@ export async function disable() {
   }
   started = false;
   await auth.signOut();
-  setCloud({ enabled: false, activeFamilyId: null, lastPulledAt: null });
+  setCloud({ enabled: false, activeFamilyId: null, activeFamilyName: null, lastPulledAt: null });
 }
 
 // @req FR-203

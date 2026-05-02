@@ -38,50 +38,17 @@ async function mountRoute(path) {
 }
 
 // @req AMD-003
-// @req US-27
-// Magic-link return handler. Renders a transient overlay, hands the URL
-// to supabase-js for the PKCE exchange, then routes the user onward.
-// Failure modes (PKCE state missing, link expired, code reused, etc.)
-// surface as toasts using the typed ERR codes from auth.js.
-async function mountAuthCallback() {
+// Stale-magic-link handler. Sign-in is OTP-only (see js/auth.js header);
+// magic-link emails are no longer sent. Old links still in inboxes
+// resolve to this route — surface a friendly toast and bounce the user
+// to Settings where they can request a new code.
+function mountAuthCallback() {
   if (currentUnmount) { try { currentUnmount(); } catch (e) { console.error(e); } currentUnmount = null; }
   appRoot.innerHTML = '';
-  const wrap = document.createElement('div');
-  wrap.className = 'aar-auth-callback';
-  wrap.setAttribute('role', 'status');
-  wrap.setAttribute('aria-live', 'polite');
-  const msg = document.createElement('p');
-  msg.textContent = 'Establishing recall beacon…';
-  wrap.appendChild(msg);
-  appRoot.appendChild(wrap);
-  currentUnmount = () => { try { wrap.remove(); } catch { /* noop */ } };
-
-  let auth;
-  try {
-    auth = await import('./auth.js');
-  } catch (e) {
-    console.error('auth module load failed:', e);
-    toast('cloud.authCallback.failed');
-    navigate(ROUTES.STATION, { replace: true });
-    return;
-  }
-
-  const result = await auth.exchangeCodeForSession(typeof location !== 'undefined' ? location.href : '');
-
-  // Strip the auth code from the URL fragment so a refresh doesn't try
-  // to redeem it again. We replace the route segment too — the user is
-  // headed onward.
   if (typeof history !== 'undefined') {
-    const target = result.ok ? ROUTES.SETTINGS : ROUTES.STATION;
-    history.replaceState({}, '', target);
+    history.replaceState({}, '', ROUTES.SETTINGS);
   }
-
-  if (!result.ok) {
-    const code = result.error?.code || 'AUTH_FAILED';
-    toast('cloud.authCallback.failed', { code });
-    navigate(ROUTES.STATION, { replace: true });
-    return;
-  }
+  toast('cloud.signIn.linkExpired');
   navigate(ROUTES.SETTINGS, { replace: true });
 }
 
@@ -171,8 +138,9 @@ export async function boot({ root, urlSearchParams = new URLSearchParams(locatio
   // Register routes.
   for (const path of Object.keys(viewModules)) register(path, () => mountRoute(path));
   register(ROUTES.PREFLIGHT, () => { mountRoute(ROUTES.STATION); showPreflight({ force: true }); });
-  // AMD-003: magic-link return target. Lazy-imports auth.js so users who
-  // never opt into cloud sync never load the supabase-js bundle.
+  // AMD-003: stale-magic-link target. Sign-in is OTP-only; this route
+  // just catches links from old emails that may still be in inboxes
+  // and surfaces a friendly toast.
   register(ROUTES.AUTH_CALLBACK, () => mountAuthCallback());
 
   subscribeRouteChange(() => {
@@ -187,15 +155,13 @@ export async function boot({ root, urlSearchParams = new URLSearchParams(locatio
 
   routerStart();
 
-  // AMD-003: surface Supabase auth errors that arrive as QUERY PARAMS
-  // rather than the PKCE-success fragment. Happens when the magic-link
-  // token was already consumed (typically by an email client's link
-  // pre-fetch / preview), so Supabase redirects back with
-  // ?error=access_denied&error_code=otp_expired.
+  // AMD-003: catch Supabase auth errors that arrive as QUERY PARAMS
+  // from an old magic-link redirect (e.g. ?error_code=otp_expired).
+  // Sign-in is OTP-only now, but old links in inboxes can still land
+  // here. Toast and strip.
   const authErr = urlSearchParams.get('error_code') || urlSearchParams.get('error');
   if (authErr) {
-    toast('cloud.authCallback.failed', { code: authErr });
-    // Strip the error params from the URL so a refresh doesn't re-toast.
+    toast('cloud.signIn.linkExpired');
     if (typeof history !== 'undefined') {
       history.replaceState({}, '', location.pathname + (location.hash || ''));
     }

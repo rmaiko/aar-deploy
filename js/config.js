@@ -75,8 +75,8 @@ export const ROUTES = Object.freeze({
   PREFLIGHT: '#/preflight',
   RELAY: '#/relay',
   REPORT: '#/report',
-  // AMD-003: magic-link return target. Registered unconditionally so a
-  // stale link surfaces a friendly toast rather than silently routing
-  // to STATION.
+  // AMD-003: stale-magic-link target. Sign-in is OTP-only; this route
+  // exists solely to catch links from old emails that may still be in
+  // inboxes and surface a friendly toast.
   AUTH_CALLBACK: '#/auth-callback',
 });
