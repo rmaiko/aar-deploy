@@ -6,23 +6,20 @@ import { loadCatalogue, setLocale, RUNTIME_LOCALES } from './i18n.js';
 import { setBackend, readState, recoverPendingShadow, writeState, setWarnSink, subscribeStorageEvents } from './storage.js';
 import { dispatch, getState } from './state.js';
 import { applyTheme, persistTheme, resolveInitialTheme, getActiveTheme } from './theme.js';
-import { register, navigate, start as routerStart, getRoute, readEmconFragment, subscribeRouteChange } from './router.js';
+import { register, navigate, start as routerStart, subscribeRouteChange } from './router.js';
 import { rebuildIfMissing, evaluateAndPersist } from './milestones.js';
 import { wireMilestoneEvaluator } from './events.js';
-import { decodeFragment } from './share.js';
-import { enterEmcon, isEmcon, exitEmcon } from './emcon.js';
+import { isEmcon } from './emcon.js';
 import { toast, banner, removeBanner, notifyStorageEventForDestructiveModals, _resetForTests } from './overlays.js';
 import { showPreflight } from './views/preflight.js';
-import { showEmconBanner, hideEmconBanner, showCorruptScreen } from './views/emcon_view.js';
-import { SCHEMA_VERSION } from './schema.js';
+import { showEmconBanner, hideEmconBanner } from './views/emcon_view.js';
 import { buildCsv, exportFilename, triggerDownload } from './csv.js';
 
 const viewModules = {
-  [ROUTES.STATION]: () => import('./views/station.js'),
-  [ROUTES.LOG]: () => import('./views/log.js'),
-  [ROUTES.SETTINGS]: () => import('./views/settings.js'),
-  [ROUTES.RELAY]: () => import('./views/relay.js'),
-  [ROUTES.REPORT]: () => import('./views/report.js'),
+  [ROUTES.STATION]: () => import('./views/station.js?v=2'),
+  [ROUTES.LOG]: () => import('./views/log.js?v=2'),
+  [ROUTES.SETTINGS]: () => import('./views/settings.js?v=2'),
+  [ROUTES.REPORT]: () => import('./views/report.js?v=2'),
 };
 
 let currentUnmount = null;
@@ -76,7 +73,7 @@ function wireMultitabBanner() {
   });
 }
 
-export async function boot({ root, urlSearchParams = new URLSearchParams(location.search), urlHash = location.hash } = {}) {
+export async function boot({ root, urlSearchParams = new URLSearchParams(location.search) } = {}) {
   appRoot = root ?? document.getElementById('app');
   if (!appRoot) throw new Error('no #app root');
 
@@ -121,19 +118,6 @@ export async function boot({ root, urlSearchParams = new URLSearchParams(locatio
 
   // Cross-tab banner.
   wireMultitabBanner();
-
-  // EMCON entry from #d=… fragment.
-  const fragmentBody = readEmconFragment(urlHash);
-  if (fragmentBody) {
-    const decoded = decodeFragment(fragmentBody);
-    if (!decoded.ok) {
-      await showCorruptScreen(appRoot);
-      return;
-    }
-    enterEmcon('share', decoded.value);
-    // Apply optional ?theme=plain (FR-124).
-    if (urlSearchParams.get('theme') === 'plain') applyTheme('plain');
-  }
 
   // Register routes.
   for (const path of Object.keys(viewModules)) register(path, () => mountRoute(path));

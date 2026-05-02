@@ -54,13 +54,6 @@ export const MILESTONE_ROUTINE_RUN_LENGTH = 3;
 export const MILESTONE_DAYS_FLOWN_INTERVAL_DAYS = 7;       // FR-106
 export const MILESTONE_TRANSFERS = [50, 100, 250, 500];    // FR-107
 
-// COMMS RELAY (FR-111, FR-115).
-export const SHARE_DAY_DEFAULT = 7;
-export const SHARE_DAY_MAX = 30;
-export const SHARE_FRAGMENT_BYTE_CAP = 1800;               // compressed, sender side
-export const SHARE_DECOMPRESS_BYTE_CAP = 256 * 1024;       // ICD §IF-02
-export const SHARE_FRAGMENT_HARD_CAP = SHARE_FRAGMENT_BYTE_CAP + 200;  // receiver slack
-
 // Toasts (FR-16).
 export const TOAST_DEFAULT_MS = 3500;
 
@@ -73,7 +66,6 @@ export const ROUTES = Object.freeze({
   LOG: '#/log',
   SETTINGS: '#/settings',
   PREFLIGHT: '#/preflight',
-  RELAY: '#/relay',
   REPORT: '#/report',
   // AMD-003: stale-magic-link target. Sign-in is OTP-only; this route
   // exists solely to catch links from old emails that may still be in

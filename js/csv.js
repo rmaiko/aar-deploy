@@ -46,12 +46,6 @@ export function exportFilename(now = new Date()) {
   return `aar-deploy-export-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}.csv`;
 }
 
-// @req FR-48
-export function buildTemplateCsv() {
-  return BOM + HEADER_ROW + LINE_END +
-    '# example: feed,port,2026-04-26T08:00:00-03:00,15,,,' + LINE_END;
-}
-
 // @req FR-42
 // @req FR-47
 export function triggerDownload(blob, filename, doc = (typeof document !== 'undefined' ? document : null)) {

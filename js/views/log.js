@@ -77,12 +77,20 @@ function refresh() {
 function renderHeader(theme) {
   const wrap = el('header', { className: 'log-header' });
   wrap.appendChild(el('h1', { text: t(`log.title.${theme}`) }));
-  wrap.appendChild(el('button', {
+  const nav = el('div', { className: 'log-header-nav', style: 'display:flex;gap:0.4rem;flex-wrap:wrap;' });
+  nav.appendChild(el('button', {
+    type: 'button',
+    className: 'tap',
+    text: t('log.openReport'),
+    on: { click: () => navigate(ROUTES.REPORT) },
+  }));
+  nav.appendChild(el('button', {
     type: 'button',
     className: 'tap nav-back',
     text: t('nav.return'),
     on: { click: () => navigate(ROUTES.STATION) },
   }));
+  wrap.appendChild(nav);
   return wrap;
 }
 

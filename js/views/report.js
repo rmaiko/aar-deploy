@@ -71,7 +71,7 @@ function renderSelector(state) {
     type: 'button',
     className: 'tap nav-back',
     text: t('report.back'),
-    on: { click: () => navigate(ROUTES.SETTINGS) },
+    on: { click: () => navigate(ROUTES.LOG) },
   }));
   return wrap;
 }

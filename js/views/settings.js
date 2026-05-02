@@ -4,10 +4,10 @@ import { t } from '../i18n.js';
 import { getActiveTheme, applyTheme, persistTheme } from '../theme.js';
 import { getState, dispatch } from '../state.js';
 import { writeState, factoryReset as fr } from '../storage.js';
-import { dialog, toast, banner } from '../overlays.js';
+import { dialog, toast } from '../overlays.js';
 import { navigate } from '../router.js';
 import { ROUTES } from '../config.js';
-import { buildCsv, exportFilename, triggerDownload, parseCsv, BOM, buildTemplateCsv } from '../csv.js';
+import { buildCsv, exportFilename, triggerDownload, parseCsv } from '../csv.js';
 import { atomicReplaceData } from '../storage.js';
 import { rebuildIfMissing } from '../milestones.js';
 import { showPreflight } from './preflight.js';
@@ -49,23 +49,38 @@ function refresh() {
   const state = getState();
   mountEl.innerHTML = '';
   mountEl.appendChild(renderHeader(theme));
-  mountEl.appendChild(section(t('settings.section.theme'), renderThemePicker(theme)));
-  mountEl.appendChild(section(t('settings.section.language'), renderLangPicker()));
-  mountEl.appendChild(section(t('settings.section.export'), renderExport(state)));
-  mountEl.appendChild(section(t('settings.section.reload'), renderReload()));
-  // MVP sections — present (architecture §2.2 C-19).
-  mountEl.appendChild(section(t('settings.section.relay'), renderRelay()));
-  mountEl.appendChild(section(t('settings.section.report'), renderReport()));
-  mountEl.appendChild(section(t('settings.section.preflight'), renderPreflight()));
-  // AMD-003 — Mission Network. Listed before Danger so the destructive
-  // section stays at the bottom of the page.
-  mountEl.appendChild(section(t('cloud.section.title'), renderMissionNetwork(state)));
-  mountEl.appendChild(section(t('settings.section.danger'), renderDanger()));
+
+  // APPEARANCE group.
+  mountEl.appendChild(group(t('settings.group.appearance'), [
+    section(t('settings.section.theme'), renderThemePicker(theme)),
+    section(t('settings.section.language'), renderLangPicker()),
+  ]));
+
+  // DATA group. Mission Network sits inside Data (cloud sync = your data
+  // going to a backend), and Danger Zone stays at the bottom so the
+  // destructive control is always last.
+  mountEl.appendChild(group(t('settings.group.data'), [
+    section(t('settings.section.export'), renderExport(state)),
+    section(t('settings.section.reload'), renderReload()),
+    section(t('settings.section.preflight'), renderPreflight()),
+    section(t('cloud.section.title'), renderMissionNetwork(state)),
+    section(t('settings.section.danger'), renderDanger()),
+  ]));
+}
+
+function group(title, sections) {
+  const wrap = el('section', { className: 'settings-group', style: 'margin:0.6rem 0 1rem;' });
+  wrap.appendChild(el('h2', {
+    text: title,
+    style: 'font-size:0.7rem;color:#7fff7f;text-transform:uppercase;letter-spacing:0.15em;border-bottom:1px solid #2a3a2a;padding-bottom:0.2rem;margin:0 0 0.3rem;',
+  }));
+  for (const s of sections) wrap.appendChild(s);
+  return wrap;
 }
 
 function section(title, body) {
   const wrap = el('section', { className: 'settings-section', style: 'padding:0.6rem 0;border-bottom:1px solid #1f2a1f;' });
-  wrap.appendChild(el('h2', { text: title, style: 'font-size:0.8rem;color:#aac8aa;text-transform:uppercase;letter-spacing:0.1em;' }));
+  wrap.appendChild(el('h3', { text: title, style: 'font-size:0.8rem;color:#aac8aa;text-transform:uppercase;letter-spacing:0.1em;' }));
   wrap.appendChild(body);
   return wrap;
 }
@@ -146,18 +161,6 @@ function renderExport(state) {
     wrap.appendChild(el('p', { text: t('settings.export.empty'), style: 'font-size:0.75rem;color:#aac8aa;' }));
   }
   wrap.appendChild(exportBtn);
-  wrap.appendChild(el('button', {
-    type: 'button',
-    className: 'tap export-template',
-    text: t('settings.export.template'),
-    on: {
-      click: () => {
-        const blob = new Blob([buildTemplateCsv()], { type: 'text/csv;charset=utf-8' });
-        const r = triggerDownload(blob, 'aar-deploy-template.csv');
-        if (!r.ok) toast('csv.export.blocked');
-      },
-    },
-  }));
   return wrap;
 }
 
@@ -221,28 +224,6 @@ async function openImportPreview(parsed) {
     toast('csv.export.success'); // generic confirmation
     navigate(ROUTES.STATION);
   }
-}
-
-function renderRelay() {
-  const wrap = el('div');
-  wrap.appendChild(el('button', {
-    type: 'button',
-    className: 'tap',
-    text: t('settings.relay.button'),
-    on: { click: () => navigate(ROUTES.RELAY) },
-  }));
-  return wrap;
-}
-
-function renderReport() {
-  const wrap = el('div');
-  wrap.appendChild(el('button', {
-    type: 'button',
-    className: 'tap',
-    text: t('settings.report.button'),
-    on: { click: () => navigate(ROUTES.REPORT) },
-  }));
-  return wrap;
 }
 
 // @req FR-62
