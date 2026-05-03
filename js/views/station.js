@@ -907,7 +907,12 @@ function renderNextVector(theme, state) {
   if (feed.status === 'insufficient') {
     wrap.appendChild(el('p', { text: t(feed.subLabelKey, { n: feed.missing }) }));
   } else {
-    const time = formatHm(feed.centre);
+    // When overdue, show the original (un-projected) centre alongside the
+    // "DUE NOW" tag. The reprojected centre is a forward-looking hint that
+    // makes sense as the displayed time only when status='ok'/'stale'; pairing
+    // it with "DUE NOW" reads contradictory.
+    const displayCentre = feed.status === 'overdue' ? feed.originalCentre : feed.centre;
+    const time = formatHm(displayCentre);
     const main = el('p', { text: t('vector.feeding', { time, band: feed.band }) });
     if (feed.status === 'overdue') main.appendChild(el('span', { text: ' — ' + t('vector.overdue') }));
     if (feed.status === 'stale') main.style.opacity = '0.6';
