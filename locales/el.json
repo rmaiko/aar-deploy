@@ -246,7 +246,7 @@
   "vector.title.themed": "NEXT VECTOR",
   "vector.title.plain": "Next predicted",
   "vector.feeding": "Next vector: ~ {time} ± {band} min",
-  "vector.basedOnLast5": "based on your last 5 feedings",
+  "vector.basedOnRecent": "based on your recent feedings",
   "vector.overdue": "DUE NOW — last vector window has closed",
   "vector.unlock.feedings": "{n} more contacts to unlock vector",
   "vector.unlock.wet": "{n} more jettisons to unlock vector",

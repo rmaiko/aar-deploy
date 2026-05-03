@@ -12,9 +12,18 @@ export const SCHEMA_VERSION = 1;
 // Mission Log render budget (FR-34, NFR-03).
 export const MISSION_LOG_PAGE_SIZE = 500;
 
-// Feeding vector (FR-36).
-export const EWMA_ALPHA = 0.3;
-export const EWMA_WINDOW = 5;
+// Feeding vector (FR-36, amended by AMD-011).
+// Trimmed time-weighted mean for centre + MAD band + day/night bucketing
+// + forward-projection. EWMA_ALPHA is gone; EWMA_WINDOW survives only as
+// the unlock gate (renamed FEED_PRED_UNLOCK_MIN).
+export const FEED_PRED_UNLOCK_MIN = 5;
+export const FEED_PRED_WINDOW_MAX = 14;
+export const FEED_PRED_HALF_LIFE_DAYS = 2;
+export const FEED_PRED_TRIM_TOP = 1;
+export const FEED_PRED_NIGHT_START_HOUR = 22;
+export const FEED_PRED_NIGHT_END_HOUR = 6;
+export const FEED_PRED_BUCKET_MIN_SAMPLES = 2;
+export const FEED_PRED_REPROJECT_MAX = 3;
 export const PREDICTION_BAND_FLOOR_MIN = 10;
 export const STALE_FACTOR = 2;
 

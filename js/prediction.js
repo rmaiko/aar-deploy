@@ -1,38 +1,104 @@
 // js/prediction.js — C-10 pure prediction functions.
 //
-// Feeding vector: EWMA-5 with α = 0.3 over the last 5 feeding intervals;
-// band = stddev(last5) clamped to ≥ 10 min (FR-36).
+// Feeding vector (FR-36, amended by AMD-011): trimmed time-weighted mean
+// of recent feeding intervals (drop top 1, half-life = 2 days, window
+// up to 14), MAD × 1.4826 for the band (floored at 10 min), day/night
+// bucketing with global fallback when the predicted bucket has < 2
+// samples, and forward-projection of the centre by full intervals (cap
+// 3) when the original centre is in the past.
 // Diaper vector: dual-λ exponential — λ_post-feed (intervals where the
 // prior event was a feed within 90 min) vs λ_baseline (all others); active
 // branch picked from elapsed-time-since-last-feed (FR-96).
 
 import {
-  EWMA_ALPHA, EWMA_WINDOW, PREDICTION_BAND_FLOOR_MIN, STALE_FACTOR,
+  FEED_PRED_UNLOCK_MIN, FEED_PRED_WINDOW_MAX, FEED_PRED_HALF_LIFE_DAYS,
+  FEED_PRED_TRIM_TOP, FEED_PRED_NIGHT_START_HOUR, FEED_PRED_NIGHT_END_HOUR,
+  FEED_PRED_BUCKET_MIN_SAMPLES, FEED_PRED_REPROJECT_MAX,
+  PREDICTION_BAND_FLOOR_MIN, STALE_FACTOR,
   POST_FEED_WINDOW_MIN, DIAPER_WINDOW,
 } from './config.js';
 
+const MIN_PER_DAY = 60 * 24;
+const MAD_TO_SIGMA = 1.4826;
+
 function tsMs(ev) { return new Date(ev.timestamp).getTime(); }
 
-function intervalsMin(events) {
+function median(values) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function madBand(values) {
+  if (values.length < 2) return 0;
+  const m = median(values);
+  const mad = median(values.map((v) => Math.abs(v - m)));
+  return mad * MAD_TO_SIGMA;
+}
+
+// Drop the largest `top` entries to reduce single-outlier sensitivity.
+function trimTop(samples, top) {
+  if (samples.length <= top + 1) return samples.slice();
+  return samples.slice().sort((a, b) => a.intervalMin - b.intervalMin)
+    .slice(0, samples.length - top);
+}
+
+function isNightHour(date) {
+  const h = date.getHours();
+  return h >= FEED_PRED_NIGHT_START_HOUR || h < FEED_PRED_NIGHT_END_HOUR;
+}
+
+// Time-weighted mean with exponential decay. `refMs` is the time used as
+// "age zero"; older samples contribute exponentially less weight with
+// half-life FEED_PRED_HALF_LIFE_DAYS.
+function timeWeightedMean(samples, refMs) {
+  if (samples.length === 0) return 0;
+  const halfLifeMs = FEED_PRED_HALF_LIFE_DAYS * MIN_PER_DAY * 60_000;
+  let num = 0;
+  let den = 0;
+  for (const s of samples) {
+    const ageMs = Math.max(0, refMs - s.endMs);
+    const w = Math.pow(0.5, ageMs / halfLifeMs);
+    num += w * s.intervalMin;
+    den += w;
+  }
+  return den > 0 ? num / den : 0;
+}
+
+// Build the recent-interval sample set: at most FEED_PRED_WINDOW_MAX
+// intervals derived from the last (WINDOW_MAX + 1) feeds. Each sample
+// carries the timestamp of the feed that *closed* the interval (used
+// for day/night bucketing and time-weight).
+function buildSamples(feeds) {
+  const slice = feeds.slice(-FEED_PRED_WINDOW_MAX - 1);
   const out = [];
-  for (let i = 1; i < events.length; i++) {
-    out.push((tsMs(events[i]) - tsMs(events[i - 1])) / 60_000);
+  for (let i = 1; i < slice.length; i++) {
+    const endMs = tsMs(slice[i]);
+    const intervalMin = (endMs - tsMs(slice[i - 1])) / 60_000;
+    out.push({
+      endMs,
+      intervalMin,
+      night: isNightHour(new Date(endMs)),
+    });
   }
   return out;
 }
 
-function ewma(values, alpha) {
-  if (values.length === 0) return 0;
-  let acc = values[0];
-  for (let i = 1; i < values.length; i++) acc = alpha * values[i] + (1 - alpha) * acc;
-  return acc;
-}
-
-function stddev(values) {
-  if (values.length < 2) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length;
-  return Math.sqrt(variance);
+// Reproject the centre forward by `interval` minutes until it sits at or
+// after `now`, capped at FEED_PRED_REPROJECT_MAX advances.
+function reprojectCentre(originalCentreMs, intervalMin, nowMs) {
+  if (originalCentreMs >= nowMs || intervalMin <= 0) {
+    return { centreMs: originalCentreMs, projectedSteps: 0 };
+  }
+  const stepMs = intervalMin * 60_000;
+  let centreMs = originalCentreMs;
+  let steps = 0;
+  while (centreMs < nowMs && steps < FEED_PRED_REPROJECT_MAX) {
+    centreMs += stepMs;
+    steps += 1;
+  }
+  return { centreMs, projectedSteps: steps };
 }
 
 // @req FR-35
@@ -45,30 +111,59 @@ function stddev(values) {
 // @req NFR-04
 export function predictFeed(events, now = new Date(), { isEmcon = false } = {}) {
   const feeds = events.filter((e) => e.type === 'feed').sort((a, b) => tsMs(a) - tsMs(b));
-  if (feeds.length < EWMA_WINDOW) {
+  if (feeds.length < FEED_PRED_UNLOCK_MIN) {
     return {
       status: 'insufficient',
-      missing: EWMA_WINDOW - feeds.length,
+      missing: FEED_PRED_UNLOCK_MIN - feeds.length,
       subLabelKey: 'vector.unlock.feedings',
       imported: isEmcon,
       importedLabelKey: isEmcon ? 'vector.imported' : null,
     };
   }
-  const window = feeds.slice(-EWMA_WINDOW - 1); // need 5 intervals → 6 events ideally
-  const ints = intervalsMin(window).slice(-EWMA_WINDOW);
-  const interval = ewma(ints, EWMA_ALPHA);
-  const sd = stddev(ints);
-  const band = Math.max(PREDICTION_BAND_FLOOR_MIN, Math.round(sd));
   const last = feeds[feeds.length - 1];
-  const centre = new Date(tsMs(last) + interval * 60_000);
-  const overdue = now.getTime() > centre.getTime() + band * 60_000;
-  const stale = (now.getTime() - tsMs(last)) > STALE_FACTOR * interval * 60_000;
+  const lastMs = tsMs(last);
+  const samples = buildSamples(feeds);
+
+  // Day/night bucketing: pick the bucket the next centre would fall in.
+  // Compute a provisional global-pool centre to choose the bucket, then
+  // recompute on the chosen pool if it has enough samples.
+  const provisionalInterval = timeWeightedMean(trimTop(samples, FEED_PRED_TRIM_TOP), lastMs);
+  const provisionalCentreMs = lastMs + provisionalInterval * 60_000;
+  const targetNight = isNightHour(new Date(provisionalCentreMs));
+  const bucketSamples = samples.filter((s) => s.night === targetNight);
+
+  let chosen;
+  let bucketKey;
+  if (bucketSamples.length >= FEED_PRED_BUCKET_MIN_SAMPLES) {
+    chosen = trimTop(bucketSamples, FEED_PRED_TRIM_TOP);
+    bucketKey = targetNight ? 'night' : 'day';
+  } else {
+    chosen = trimTop(samples, FEED_PRED_TRIM_TOP);
+    bucketKey = 'global';
+  }
+
+  const interval = timeWeightedMean(chosen, lastMs);
+  const band = Math.max(
+    PREDICTION_BAND_FLOOR_MIN,
+    Math.round(madBand(chosen.map((s) => s.intervalMin))),
+  );
+
+  const originalCentreMs = lastMs + interval * 60_000;
+  const nowMs = now.getTime();
+  const overdue = nowMs > originalCentreMs + band * 60_000;
+  const stale = (nowMs - lastMs) > STALE_FACTOR * interval * 60_000;
+  const { centreMs, projectedSteps } = reprojectCentre(originalCentreMs, interval, nowMs);
+
   return {
     status: overdue ? 'overdue' : (stale ? 'stale' : 'ok'),
-    centre,
+    centre: new Date(centreMs),
+    originalCentre: new Date(originalCentreMs),
     band,
     interval,
-    subLabelKey: 'vector.basedOnLast5',
+    bucket: bucketKey,
+    projectedSteps,
+    sampleCount: chosen.length,
+    subLabelKey: 'vector.basedOnRecent',
     imported: isEmcon,
     importedLabelKey: isEmcon ? 'vector.imported' : null,
   };
