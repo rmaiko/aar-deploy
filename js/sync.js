@@ -49,6 +49,14 @@ let pollTimer = null;
 let onlineHandler = null;
 let visibilityHandler = null;
 
+// First pull per session (boot, family change) skips the incremental
+// updated_at filter so a stale lastPulledAt — for example one bumped past
+// not-yet-synced rows by client-clock skew — cannot permanently hide
+// events from this client. Subsequent pulls in the same session use an
+// overlap window for the same reason at lower cost.
+let firstPullDone = false;
+const PULL_OVERLAP_MS = 5 * 60 * 1000;
+
 // Diff bookkeeping — id → event snapshot from the previous notification.
 // Used to compute add/update/delete deltas without leaning on dispatch
 // instrumentation (state.js stays untouched).
@@ -86,6 +94,7 @@ export function init(opts = {}) {
 export function start() {
   if (started) return;
   started = true;
+  firstPullDone = false;
   // Seed the diff baseline from the current state so we never duplicate
   // the entire log on first notification.
   lastEventsMap = new Map(getState().events.map((e) => [e.id, e]));
@@ -94,7 +103,11 @@ export function start() {
 
   unsubSignedIn  = auth.on('signedIn',  () => { drainSoon(); pullNow(); });
   unsubSignedOut = auth.on('signedOut', () => { /* keep queue; drains stop via getCloud guard */ });
-  unsubFamily    = auth.on('familyChanged', () => { lastEventsMap = new Map(getState().events.map((e) => [e.id, e])); pullNow(); });
+  unsubFamily    = auth.on('familyChanged', () => {
+    lastEventsMap = new Map(getState().events.map((e) => [e.id, e]));
+    firstPullDone = false;
+    pullNow();
+  });
 
   if (typeof window !== 'undefined') {
     onlineHandler = () => drainSoon();
@@ -132,6 +145,7 @@ export function start() {
 export function stop({ dropQueue = false } = {}) {
   if (!started) return;
   started = false;
+  firstPullDone = false;
   if (unsubState) { unsubState(); unsubState = null; }
   if (unsubSignedIn)  { unsubSignedIn();  unsubSignedIn  = null; }
   if (unsubSignedOut) { unsubSignedOut(); unsubSignedOut = null; }
@@ -181,19 +195,29 @@ export async function drainNow() { return drain(); }
 
 // @req FR-212
 // Manual pull-to-refresh hook. Safe to call when cloud is off (no-op).
-export async function pullNow() {
+export async function pullNow(opts = {}) {
   const cloud = getCloud();
   if (!cloud.enabled || !cloud.activeFamilyId) return { ok: false, error: { code: 'NOT_READY' } };
   if (!isOnline()) return { ok: false, error: { code: 'OFFLINE' } };
   const c = await auth.getClient();
   if (!c) return { ok: false, error: { code: 'NO_CLIENT' } };
 
+  const full = opts.full ?? !firstPullDone;
+
   let q = c.from('events').select('*').eq('family_id', cloud.activeFamilyId).is('deleted_at', null);
-  if (cloud.lastPulledAt) q = q.gt('updated_at', cloud.lastPulledAt);
+  if (!full && cloud.lastPulledAt) {
+    const overlap = new Date(Date.parse(cloud.lastPulledAt) - PULL_OVERLAP_MS).toISOString();
+    q = q.gt('updated_at', overlap);
+  }
 
   const { data, error } = await q;
   if (error) return { ok: false, error: { code: 'FETCH_FAILED', message: error.message } };
 
+  // Read local state AFTER the round-trip. Reading it before would lose
+  // any event the user logged while the request was in flight: the
+  // [...cur, ...incoming] merge below replaces events wholesale, and the
+  // next onStateChange pass would then queue a phantom soft-delete for
+  // the missing event.
   const cur = getState().events;
   const seenIds = new Set(cur.map((e) => e.id));
   const incoming = (data || []).map(rowToEvent).filter((e) => e && !seenIds.has(e.id));
@@ -210,8 +234,9 @@ export async function pullNow() {
     dispatch({ type: 'state/set', payload: merged });
   }
 
+  firstPullDone = true;
   setCloud({ lastPulledAt: new Date().toISOString() });
-  return { ok: true, fetched: (data || []).length, merged: incoming.length };
+  return { ok: true, fetched: (data || []).length, merged: incoming.length, full };
 }
 
 // ── State diff → enqueue (FR-202, FR-213, FR-214, FR-215) ─────────────
@@ -462,6 +487,7 @@ export function _resetForTests() {
   advisoryActive = false;
   rlsDropAdvised = false;
   drainScheduled = false;
+  firstPullDone = false;
   if (pullDebounceTimer) { clearTimeout(pullDebounceTimer); pullDebounceTimer = null; }
   warnSink = () => {};
   getCloud = () => ({ enabled: false, activeFamilyId: null, lastPulledAt: null });
