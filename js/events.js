@@ -9,7 +9,7 @@ import { writeState } from './storage.js';
 import { gate } from './emcon.js';
 import { resolveTimestamp, toLocalIso } from './chip.js';
 import {
-  FEED_DURATION_MIN, FEED_DURATION_MAX,
+  FEED_DURATION_MIN, FEED_DURATION_MAX, FEED_TIMER_DURATION_CAP_MIN,
   WEIGHT_KG_MIN, WEIGHT_KG_MAX, LENGTH_CM_MIN, LENGTH_CM_MAX,
 } from './config.js';
 
@@ -253,7 +253,7 @@ export function stopFeedTimerAndLog() {
   gate('logFeed');
   if (!activeFeedTimer) return { ok: false, error: { code: 'noTimer' } };
   const elapsedMs = Date.now() - activeFeedTimer.startedAt;
-  const durationMin = Math.max(0, Math.round(elapsedMs / 60_000));
+  const durationMin = Math.min(FEED_TIMER_DURATION_CAP_MIN, Math.max(0, Math.round(elapsedMs / 60_000)));
   const startIso = toLocalIso(new Date(activeFeedTimer.startedAt));
   const side = activeFeedTimer.side;
   const ev = {
@@ -290,7 +290,7 @@ export function logFeedWithChipDuration({ side, when }) {
   const ts = resolveTimestampOrNow(when);
   if (!ts.ok) return { ok: false, error: { code: 'time', errorKey: ts.errorKey } };
   const startMs = ts.value.getTime();
-  const durationMin = Math.max(0, Math.round((Date.now() - startMs) / 60_000));
+  const durationMin = Math.min(FEED_TIMER_DURATION_CAP_MIN, Math.max(0, Math.round((Date.now() - startMs) / 60_000)));
   const iso = toLocalIso(new Date(startMs));
   const ev = {
     id: newEventId('feed', iso),

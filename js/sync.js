@@ -32,6 +32,13 @@ const QUEUE_CAP = 1000;               // FR-216: queue size advisory threshold
 const FAILURE_CAP = 20;               // FR-216: per-delta retry advisory threshold
 const SCHEMA_VERSION_FOR_CLOUD = 1;   // matches NFR-24 SCHEMA_VERSION
 
+// Postgres SQLSTATEs the cloud will never accept for this row as written
+// (CHECK violation, NOT NULL, range/format). Drop instead of retrying —
+// otherwise one bad delta wedges the queue head forever. Local state has
+// already moved on (user edit, deleteLast), so a fresh upsert behind it
+// will reflect the corrected value once the head is gone.
+const SCHEMA_REJECT_CODES = new Set(['23514', '23502', '22001', '22003', '22P02']);
+
 // ── Module state ──────────────────────────────────────────────────────
 let started = false;
 let unsubState = null;
@@ -340,10 +347,19 @@ async function drain() {
         queue = queue.slice(1);
         writeQueue(queue);
         drained++;
+        // Successful applyDelta resets the per-outage error toast so a
+        // future failure can surface a fresh advisory rather than being
+        // suppressed by a flag that fired hours ago.
+        advisoryActive = false;
         continue;
       }
       head.attempts = (head.attempts || 0) + 1;
       writeQueue(queue);
+      // Surface immediately so the user sees a single toast within ~30s
+      // of the first failure. FR-216's attempts > FAILURE_CAP trigger
+      // remains as a spec-traceable backstop — same advisory either way,
+      // deduped by advisoryActive.
+      raiseAdvisory();
       if (head.attempts > FAILURE_CAP) raiseAdvisory();
       // Permanent rejections (RLS / unique violation already-applied)
       // drop the head so a single bad delta cannot wedge the queue.
@@ -372,6 +388,10 @@ async function applyDelta(c, entry) {
       if (String(error.code) === '23505') return { ok: true };
       // 42501 = insufficient_privilege (RLS). Permanent for this caller.
       if (String(error.code) === '42501') return { ok: false, permanent: true, rls: true, error };
+      if (SCHEMA_REJECT_CODES.has(String(error.code))) {
+        console.warn('sync: dropping delta with permanent schema rejection', error.code, entry.client_id);
+        return { ok: false, permanent: true, error };
+      }
       return { ok: false, error };
     }
     if (entry.op === 'delete') {

@@ -15,7 +15,7 @@ import { toast } from './overlays.js';
 
 let syncModule = null;
 let started = false;
-let warnSink = (key) => toast(key);
+let warnSink = (topic, params = {}) => toast(params?.key ?? topic, params);
 
 async function ensureSync() {
   if (!syncModule) syncModule = await import('./sync.js');

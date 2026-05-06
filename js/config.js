@@ -47,6 +47,10 @@ export const BACKDATE_LIMIT_HOURS = 24;
 // Feeding & weight ranges (FR-04, FR-08).
 export const FEED_DURATION_MIN = 0;
 export const FEED_DURATION_MAX = 240;
+// Upper clamp applied when duration is derived from wall-clock elapsed
+// (live timer / chip-back-date) rather than typed in. A parent who left
+// the timer running overnight should not commit an 8-hour feed.
+export const FEED_TIMER_DURATION_CAP_MIN = 90;
 export const WEIGHT_KG_MIN = 0.5;
 export const WEIGHT_KG_MAX = 25;
 export const LENGTH_CM_MIN = 30;
