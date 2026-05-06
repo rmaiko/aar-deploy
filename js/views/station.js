@@ -18,7 +18,9 @@ import { predictFeed, predictDiaper } from '../prediction.js';
 import { isEmcon, getImportedState } from '../emcon.js';
 import { navigate } from '../router.js';
 import { ROUTES } from '../config.js';
-import { toast, dialog, banner } from '../overlays.js';
+import { toast, dialog, banner, removeBanner } from '../overlays.js';
+import { getQueue } from '../sync.js';
+import { getSession } from '../auth.js';
 import { resolveTimeOnly } from '../chip.js';
 import {
   getReminders, addReminder, cancelReminder, checkOffReminder,
@@ -993,12 +995,36 @@ function labelForEvent(ev, theme) {
 // @req FR-67
 // @req FR-68
 function evaluateBackupBanner(state) {
-  if (isEmcon()) return;
+  if (isEmcon()) { removeBanner('backup-overdue'); return; }
+
+  // Cloud-aware path: when Mission Network is enabled and healthy
+  // (signed in + active wing + drained queue), the cloud is the
+  // backup — suppress the local-export nudge. When enabled but
+  // unhealthy, surface a distinct "changes not synced" warning so
+  // local-only edits aren't silently unprotected.
+  const cloud = state?.cloud || {};
+  if (cloud.enabled) {
+    const signedIn = !!getSession();
+    const queueLen = getQueue().length;
+    if (signedIn && cloud.activeFamilyId && queueLen === 0) {
+      removeBanner('backup-overdue');
+      return;
+    }
+    const key = (signedIn && cloud.activeFamilyId)
+      ? 'backup.cloud.queued.banner'
+      : 'backup.cloud.offline.banner';
+    banner('backup-overdue', key, { count: queueLen }, [
+      { labelKey: 'backup.openSettings', onClick: () => navigate(ROUTES.SETTINGS) },
+    ]);
+    return;
+  }
+
   const events = state.events.length;
   const lastExport = state.lastExportAt ? new Date(state.lastExportAt).getTime() : null;
   const dismissAt = state.lastNudgeDismissAt ? new Date(state.lastNudgeDismissAt).getTime() : null;
   const now = Date.now();
   if (dismissAt && now - dismissAt < REMIND_LATER_HOURS * 3600 * 1000) {
+    removeBanner('backup-overdue');
     return;
   }
   let key = null;
@@ -1006,7 +1032,7 @@ function evaluateBackupBanner(state) {
   else if (lastExport != null && (now - lastExport) > BACKUP_NUDGE_DAYS * 24 * 3600 * 1000 && events >= BACKUP_NUDGE_MIN_EVENTS) {
     key = 'backup.overdue.banner';
   }
-  if (!key) return;
+  if (!key) { removeBanner('backup-overdue'); return; }
   banner('backup-overdue', key, {}, [
     { labelKey: 'backup.exportNow', onClick: () => triggerExport() },
     { labelKey: 'backup.remindLater', onClick: () => {

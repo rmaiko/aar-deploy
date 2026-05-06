@@ -345,8 +345,11 @@
 
   "backup.overdue.banner": "BACKUP OVERDUE — export a CSV soon to avoid losing data to browser cleanup.",
   "backup.first.banner": "FIRST BACKUP — you've logged 10 events. Export a CSV now to protect against browser cleanup.",
+  "backup.cloud.queued.banner": "CHANGES NOT SYNCED — {count} update(s) waiting to reach the wing. Check your connection.",
+  "backup.cloud.offline.banner": "CHANGES NOT SYNCED — Mission Network not connected. Open Settings to sign in or pick a wing.",
   "backup.exportNow": "EXPORT NOW",
   "backup.remindLater": "REMIND ME LATER",
+  "backup.openSettings": "OPEN SETTINGS",
 
   "deleteLast.button": "DELETE LAST — {type} @ {time}",
   "deleteLast.subLabel.themed": "Remove most recent entry",
