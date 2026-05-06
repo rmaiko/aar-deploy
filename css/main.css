@@ -32,6 +32,73 @@ body {
 
 #app { padding: 0.75rem; max-width: 40rem; margin: 0 auto; }
 
+/* Persistent primary tab bar (Station / Maintenance / Mission Log /
+   Report / Settings). Sticks to the top so the same nav is always one
+   tap away, regardless of which view is mounted. Tabs are centred
+   with an underline indicator on the active route — kept lightweight
+   so the CRT/loadmaster aesthetic isn't broken by chunky pills. */
+#tabnav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 0;
+  max-width: 40rem;
+  margin: 0 auto 0.4rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--grid);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+#tabnav .tabnav-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  min-width: 70px;
+  min-height: 53px;
+  padding: 0.4rem 0.8rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 0.77rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 80ms ease, border-color 80ms ease;
+}
+#tabnav .tabnav-icon {
+  font-size: 1.16rem;
+  line-height: 1;
+}
+#tabnav .tabnav-label {
+  font-size: 0.72rem;
+}
+#tabnav .tabnav-btn:hover { color: var(--fg); }
+#tabnav .tabnav-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+#tabnav .tabnav-btn.active .tabnav-icon { color: var(--accent); }
+#tabnav .tabnav-btn:focus-visible {
+  outline: 2px solid var(--warn);
+  outline-offset: -2px;
+}
+@media (max-width: 380px) {
+  #tabnav .tabnav-btn { min-width: 62px; padding: 0.33rem 0.5rem; }
+  #tabnav .tabnav-label { font-size: 0.66rem; letter-spacing: 0.05em; }
+}
+
 h1 { font-size: 1.2rem; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; margin: 0 0 0.5rem; }
 h2 { font-size: 0.85rem; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.1em; margin: 0.6rem 0 0.3rem; }
 p { margin: 0.4rem 0; }
@@ -78,19 +145,58 @@ small { color: var(--fg-dim); font-size: 0.75rem; }
 .station-nav { display: flex; flex-wrap: wrap; gap: 0.3rem; flex: 0 0 auto; }
 .nav-btn { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
 
-.log-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.6rem 0; }
-.log-actions .tap { padding: 0.8rem; flex-direction: column; min-height: 64px; text-align: center; }
-/* The first button (CONTACT) spans full width to emphasise it as the
-   primary action — feeding is the most-frequent log. */
-.log-actions .tap:first-child { grid-column: 1 / -1; min-height: 72px; }
-/* MAINTENANCE LOG (last child) also spans full width to match CONTACT. */
-.log-actions .tap:last-child { grid-column: 1 / -1; }
+.log-actions { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.6rem 0; }
+.log-actions .tap { padding: 0.8rem; flex-direction: column; min-height: 64px; text-align: center; width: 100%; }
+/* CONTACT (first child) is the primary action — slightly taller so it
+   reads as the dominant tap target. */
+.log-actions .tap:first-child { min-height: 72px; }
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
 .chip { font-size: 0.85rem; padding: 0.3rem 0.7rem; min-height: 44px; }
 .chip-active { background: var(--accent); color: var(--bg); }
 
-.last-contact, .today, .next-vector, .delete-last { padding: 0.5rem; border: 1px solid var(--grid); margin: 0.5rem 0; border-radius: var(--rad); background: var(--panel); }
+.today, .delete-last { padding: 0.5rem; border: 1px solid var(--grid); margin: 0.5rem 0; border-radius: var(--rad); background: var(--panel); }
+
+/* Combined LAST CONTACT / NEXT VECTOR panel.  One unified box reads
+   as "what just happened, what's coming next".  Stacks on narrow
+   screens; splits into two columns on wider ones with a hairline
+   divider between them. */
+.status-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--grid);
+  margin: 0.5rem 0;
+  border-radius: var(--rad);
+  background: var(--panel);
+}
+.status-col h2 {
+  margin: 0 0 0.2rem;
+  font-size: 0.7rem;
+  color: var(--accent);
+  letter-spacing: 0.12em;
+}
+.status-col p { margin: 0.15rem 0; }
+.status-col small { display: block; color: var(--fg-dim); font-size: 0.7rem; margin-top: 0.1rem; }
+.status-col .status-primary { font-size: 1.0rem; color: var(--fg); }
+.status-col .status-secondary { font-size: 0.9rem; color: var(--fg); }
+.status-col .status-detail { font-size: 0.8rem; color: var(--fg-dim); }
+.status-col .relative { color: var(--fg-dim); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.status-col .status-tag { color: var(--warn); font-weight: 600; }
+.status-col + .status-col {
+  border-top: 1px dashed var(--grid);
+  padding-top: 0.5rem;
+}
+@media (min-width: 480px) {
+  .status-panel { grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+  .status-col + .status-col {
+    border-top: 0;
+    border-left: 1px dashed var(--grid);
+    padding-top: 0;
+    padding-left: 0.9rem;
+  }
+}
 
 /* ECAM-style checklist (inside the maintenance log modal).
    Inspired by Airbus ECAM: a coloured status bar, fixed-width label,
@@ -149,10 +255,62 @@ small { color: var(--fg-dim); font-size: 0.75rem; }
 .aar-toast { font: inherit; }
 .aar-banner { font: inherit; }
 
-ol.log-list li { margin: 0; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--grid); font-size: 0.85rem; }
-.log-today { border-left: 3px solid var(--accent); padding-left: 0.4rem; }
-.log-badge-milestone { color: var(--warn); }
-.log-badge-system { color: var(--accent); font-style: italic; }
+/* Mission Log table — one table for the whole log; day-divider rows
+   group entries by local-clock day while keeping columns aligned. */
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.6rem;
+}
+.log-table thead th {
+  position: sticky;
+  top: 53px; /* sits below the persistent tab bar */
+  background: var(--bg);
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--grid);
+  padding: 0.35rem 0.4rem;
+  z-index: 2;
+}
+.log-table tbody td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--grid);
+  vertical-align: top;
+}
+.log-table .log-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-dim);
+  width: 3.5rem;
+  white-space: nowrap;
+}
+.log-table .log-type {
+  color: var(--fg);
+  font-weight: 600;
+  white-space: nowrap;
+  width: 1%;        /* shrink-to-fit but bounded by max-width */
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.log-table .log-details { color: var(--fg); word-break: break-word; }
+.log-table .log-row-milestone .log-type { color: var(--warn); }
+.log-table .log-row-system .log-type { color: var(--accent); font-style: italic; }
+.log-table .log-day-divider td {
+  padding: 0.6rem 0.4rem 0.25rem;
+  border-bottom: 1px dashed var(--grid);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  background: transparent;
+}
+.log-table .log-day-today td { color: var(--warn); }
 
 /* Plain-theme overrides */
 html[data-theme="plain"] { --accent: #5fb05f; }

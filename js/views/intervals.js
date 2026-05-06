@@ -1,10 +1,9 @@
-// js/views/intervals.js — C-21 inter-event interval histograms (AMD-010).
+// js/views/intervals.js — C-21 inter-event interval histogram (AMD-010).
 //
-// Three small histograms on the Mission Log: feed-to-feed,
-// wet-to-wet, dirty-to-dirty. Bars are observed counts; the optional
-// curve is a log-normal MLE fit of the same data — both the parents'
-// and the pediatrician's eye for "is this still in pattern" benefits
-// from seeing the modal interval.
+// One small histogram on the Mission Log: feed-to-feed. Bars are
+// observed counts; the optional curve is a log-normal MLE fit of the
+// same data — both the parents' and the pediatrician's eye for "is
+// this still in pattern" benefits from seeing the modal interval.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -205,20 +204,16 @@ export function renderIntervalHistograms(state) {
   const events = state.events ?? [];
   if (events.length === 0) return null;
   const feedIntervals = intervalsForType(events, 'feed');
-  const wetIntervals = intervalsForType(events, 'wet');
-  const dirtyIntervals = intervalsForType(events, 'dirty');
-  if (feedIntervals.length + wetIntervals.length + dirtyIntervals.length === 0) return null;
+  if (feedIntervals.length === 0) return null;
 
   const wrap = document.createElement('section');
   wrap.className = 'log-interval-charts';
   wrap.style.cssText = 'display:flex;flex-direction:column;gap:0.5rem;margin:0.6rem 0;';
   const heading = document.createElement('h2');
-  heading.textContent = 'INTER-EVENT INTERVALS';
+  heading.textContent = 'FEED-TO-FEED INTERVAL';
   wrap.appendChild(heading);
 
-  if (feedIntervals.length > 0) wrap.appendChild(renderHistogramSvg(feedIntervals, 'Feed-to-feed'));
-  if (wetIntervals.length > 0) wrap.appendChild(renderHistogramSvg(wetIntervals, 'Wet-to-wet'));
-  if (dirtyIntervals.length > 0) wrap.appendChild(renderHistogramSvg(dirtyIntervals, 'Dirty-to-dirty'));
+  wrap.appendChild(renderHistogramSvg(feedIntervals, 'Feed-to-feed'));
 
   const note = document.createElement('p');
   note.style.cssText = 'font-size:0.7rem;color:#aac8aa;margin:0;';

@@ -76,6 +76,7 @@ export const RELATIVE_TIME_TICK_MS = 60_000;
 // Routes (ADR-002).
 export const ROUTES = Object.freeze({
   STATION: '#/',
+  MAINTENANCE: '#/maintenance',
   LOG: '#/log',
   SETTINGS: '#/settings',
   PREFLIGHT: '#/preflight',

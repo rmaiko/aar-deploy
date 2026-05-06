@@ -7,10 +7,10 @@ import { t } from '../i18n.js';
 import { getActiveTheme, tk } from '../theme.js';
 import { getState, subscribe } from '../state.js';
 import {
-  logFeed, logDiaper, logWeight, deleteLast,
+  logFeed, logDiaper, deleteLast,
   startFeedTimer, stopFeedTimerAndLog, cancelFeedTimer,
   getActiveFeedTimer, subscribeFeedTimer,
-  updateEvent, logNote,
+  updateEvent,
 } from '../events.js';
 import { dispatch } from '../state.js';
 import { writeState } from '../storage.js';
@@ -21,11 +21,7 @@ import { ROUTES } from '../config.js';
 import { toast, dialog, banner, removeBanner } from '../overlays.js';
 import { getQueue } from '../sync.js';
 import { getSession } from '../auth.js';
-import { resolveTimeOnly } from '../chip.js';
-import {
-  getReminders, addReminder, cancelReminder, checkOffReminder,
-  checklistForToday, describeSchedule, isReminderEnvelope,
-} from '../reminders.js';
+import { isReminderEnvelope } from '../reminders.js';
 import {
   RELATIVE_TIME_TICK_MS, BACKUP_NUDGE_DAYS, BACKUP_NUDGE_MIN_EVENTS, FIRST_BACKUP_MIN_EVENTS,
   REMIND_LATER_HOURS,
@@ -45,10 +41,9 @@ function refresh() {
   mountEl.appendChild(renderHeader(theme, state));
   mountEl.appendChild(renderTimerPanel(theme));
   mountEl.appendChild(renderActions(theme, state));
-  mountEl.appendChild(renderLastContact(theme, state));
+  mountEl.appendChild(renderStatus(theme, state));
   mountEl.appendChild(renderToday(theme, state));
   mountEl.appendChild(renderRecent(theme, state));
-  mountEl.appendChild(renderNextVector(theme, state));
   mountEl.appendChild(renderDeleteLast(theme, state));
   evaluateBackupBanner(state);
 }
@@ -83,24 +78,6 @@ function renderHeader(theme, state) {
     : t(`app.subtitle.${theme}`);
   titleWrap.appendChild(el('p', { className: 'sub', text: subtitle }));
   h.appendChild(titleWrap);
-  const nav = el('nav', { className: 'station-nav' });
-  nav.appendChild(el('button', {
-    type: 'button',
-    className: 'tap nav-btn',
-    text: t('nav.openLog'),
-    aria: { label: t('nav.openLog') },
-    on: { click: () => navigate(ROUTES.LOG) },
-  }));
-  nav.appendChild(el('button', {
-    type: 'button',
-    className: 'tap nav-btn nav-settings',
-    // Gear glyph + visible label so the affordance is discoverable
-    // even before the user reads the label.
-    text: '⚙ ' + t('nav.openSettings'),
-    aria: { label: t('nav.openSettings') },
-    on: { click: () => navigate(ROUTES.SETTINGS) },
-  }));
-  h.appendChild(nav);
   return h;
 }
 
@@ -147,342 +124,7 @@ function renderActions(theme, state) {
     const r = logDiaper({ type: 'dirty' });
     handleLogResult(r, 'event.confirm.dirty', 'dirty');
   }));
-  // Maintenance log groups Notes, Tanker Service, Weight & Balance,
-  // Bravo-1 washing, Bravo-1 maintenance + the reminders/checklist.
-  wrap.appendChild(make(tk('loadAction.maintenanceLog'), 'loadAction.maintenanceLog.plain', () => {
-    if (handleEmconBlocked()) return;
-    openMaintenanceDialog();
-  }));
   return wrap;
-}
-
-async function openNoteDialog() {
-  const wrap = el('div');
-  const ta = document.createElement('textarea');
-  ta.rows = 3;
-  ta.maxLength = 500;
-  ta.placeholder = t('note.dialog.placeholder');
-  ta.style.cssText = 'width:100%;font:inherit;background:#0a0d0a;color:#c8e6c9;border:1px solid #1f2a1f;padding:0.3rem;';
-  wrap.appendChild(ta);
-  // expose chip-driven timestamp explicitly so user sees what they're saving.
-  const tInput = document.createElement('input');
-  tInput.type = 'datetime-local';
-  tInput.value = toLocalDateTimeInput(new Date());
-  wrap.appendChild(labelled(t('weight.timeLabel'), tInput));
-  const choice = await dialog({
-    titleKey: 'note.dialog.title',
-    content: wrap,
-    actions: [
-      { labelKey: 'feeding.cancel', value: 'cancel', cancel: true },
-      { labelKey: 'note.dialog.save', value: 'ok', primary: true, defaultFocus: true },
-    ],
-  });
-  if (choice !== 'ok') return;
-  const text = ta.value.trim();
-  if (!text) { toast('note.dialog.empty'); return; }
-  const r = logNote({ notes: text, when: new Date(tInput.value) });
-  if (!r.ok) {
-    if (r.error?.errorKey) toast(r.error.errorKey);
-    return;
-  }
-  toast('event.confirm.note', { time: formatHm(new Date(r.value.timestamp)) });
-  refresh();
-}
-
-// MAINTENANCE LOG modal — groups Notes/Tanker/Weight + Bravo-1
-// washing/maintenance + the reminders/checklist (ECAM-styled).
-async function openMaintenanceDialog() {
-  const theme = getActiveTheme();
-  let queuedAction = null;
-
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'min-width:20rem;display:flex;flex-direction:column;gap:0.6rem;';
-
-  // Checklist section (ECAM-style: each row is a line item with a checkbox).
-  wrap.appendChild(renderChecklistSection(theme));
-
-  // Action picker (sub-actions log into the manifest).
-  const actionsHeader = el('div', {
-    text: t(`maintenance.dialog.subtitle.${theme}`),
-    style: 'font-size:0.7rem;color:#aac8aa;text-transform:uppercase;letter-spacing:0.1em;margin-top:0.2rem;',
-  });
-  wrap.appendChild(actionsHeader);
-
-  const actionsCol = el('div', { className: 'maintenance-actions', style: 'display:flex;flex-direction:column;gap:0.3rem;' });
-  // Closes the parent dialog *and* resolves its promise. Uses the
-  // dialog-helper-internal __close hook (overlays.js) — calling
-  // dlg.close() directly would visually dismiss but leave the awaiting
-  // promise hanging.
-  const queue = (fn) => (e) => {
-    queuedAction = fn;
-    const dlg = e.currentTarget.closest('dialog');
-    if (dlg && typeof dlg.__close === 'function') dlg.__close('cancel');
-    else if (dlg) dlg.close();
-  };
-  const row = (key, plainKey, onClick) => {
-    const b = el('button', {
-      type: 'button',
-      className: 'tap maintenance-row',
-      style: 'justify-content:flex-start;text-align:left;padding:0.55rem 0.7rem;width:100%;flex-direction:column;align-items:flex-start;',
-      on: { click: onClick },
-    });
-    b.appendChild(el('span', { className: 'themed', text: t(key), style: 'font-weight:600;' }));
-    b.appendChild(el('span', { className: 'plain', text: t(plainKey), style: 'font-size:0.75rem;color:#aac8aa;' }));
-    if (theme === 'plain') b.firstChild.style.cssText = 'display:none;';
-    return b;
-  };
-  actionsCol.appendChild(row(`loadAction.weight.${theme}`, 'loadAction.weight.plain', queue(() => openWeightDialog())));
-  actionsCol.appendChild(row(`loadAction.note.${theme}`, 'loadAction.note.plain', queue(() => openNoteDialog())));
-  actionsCol.appendChild(row(`loadAction.tankerService.${theme}`, 'loadAction.tankerService.plain', queue(() => {
-    const r = logNote({ notes: t('loadAction.tankerService.marker') });
-    handleLogResult(r, 'event.confirm.tankerService', 'note');
-    refresh();
-  })));
-  actionsCol.appendChild(row(`loadAction.washing.${theme}`, 'loadAction.washing.plain', queue(() => {
-    const r = logNote({ notes: t('loadAction.washing.marker') });
-    handleLogResult(r, 'event.confirm.washing', 'note');
-    refresh();
-  })));
-  actionsCol.appendChild(row(`loadAction.maintenance.${theme}`, 'loadAction.maintenance.plain', queue(() => {
-    const r = logNote({ notes: t('loadAction.maintenance.marker') });
-    handleLogResult(r, 'event.confirm.maintenance', 'note');
-    refresh();
-  })));
-  wrap.appendChild(actionsCol);
-
-  // Reminders management buttons.
-  const remRow = el('div', { style: 'display:flex;flex-wrap:wrap;gap:0.3rem;justify-content:flex-end;margin-top:0.2rem;' });
-  remRow.appendChild(el('button', {
-    type: 'button',
-    className: 'tap',
-    text: t(`maintenance.dialog.addReminder.${theme}`),
-    style: 'font-size:0.8rem;',
-    on: { click: queue(() => openAddReminderDialog()) },
-  }));
-  remRow.appendChild(el('button', {
-    type: 'button',
-    className: 'tap',
-    text: t(`maintenance.dialog.manageReminders.${theme}`),
-    style: 'font-size:0.8rem;',
-    on: { click: queue(() => openManageRemindersDialog()) },
-  }));
-  wrap.appendChild(remRow);
-
-  await dialog({
-    titleKey: `maintenance.dialog.title.${theme}`,
-    content: wrap,
-    actions: [
-      { labelKey: 'maintenance.dialog.cancel', value: 'cancel', cancel: true, defaultFocus: true },
-    ],
-  });
-  if (queuedAction) {
-    try { await queuedAction(); } catch (e) { console.error('maintenance action failed:', e); }
-  }
-}
-
-// ECAM-style checklist section. Renders inside the maintenance dialog.
-function renderChecklistSection(theme) {
-  const wrap = el('section', { className: 'ecam-checklist' });
-  wrap.appendChild(el('div', {
-    text: t(`maintenance.dialog.checklistTitle.${theme}`),
-    className: 'ecam-checklist-title',
-  }));
-  const list = checklistForToday();
-  if (list.length === 0) {
-    wrap.appendChild(el('p', {
-      text: t(`maintenance.dialog.checklistEmpty.${theme}`),
-      style: 'font-size:0.8rem;color:#aac8aa;margin:0.2rem 0;',
-    }));
-    return wrap;
-  }
-  const ol = el('ol', { className: 'ecam-checklist-list', style: 'list-style:none;padding:0;margin:0;' });
-  for (const item of list) {
-    ol.appendChild(renderChecklistRow(item, theme));
-  }
-  wrap.appendChild(ol);
-  return wrap;
-}
-
-function renderChecklistRow(item, theme) {
-  const li = el('li', { className: `ecam-row ecam-${item.status}` });
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.className = 'ecam-checkbox';
-  cb.checked = item.status === 'done';
-  cb.disabled = item.status === 'done'; // already done; can't un-check (history is immutable)
-  cb.addEventListener('change', () => {
-    if (!cb.checked) return;
-    const r = checkOffReminder(item.reminder);
-    if (!r.ok) {
-      cb.checked = false;
-      if (r.error?.errorKey) toast(r.error.errorKey);
-      return;
-    }
-    toast('event.confirm.reminder', { label: item.reminder.label, time: formatHm(new Date(r.value.timestamp)) });
-    // The maintenance dialog rebuilds its checklist next open; for now
-    // just visually mark it done.
-    li.classList.remove('ecam-pending', 'ecam-overdue', 'ecam-upcoming');
-    li.classList.add('ecam-done');
-    cb.disabled = true;
-    refresh();
-  });
-  li.appendChild(cb);
-
-  const label = el('div', { className: 'ecam-label' });
-  label.appendChild(el('span', { className: 'ecam-label-text', text: item.reminder.label }));
-  const dueText = item.status === 'done' && item.completedAt
-    ? `✓ ${formatHm(item.completedAt)}`
-    : (item.status === 'overdue'
-        ? `${t('reminder.checklist.overdue')} · ${formatHm(item.dueAt)}`
-        : t('reminder.checklist.dueAt', { time: formatHm(item.dueAt) }));
-  label.appendChild(el('span', { className: 'ecam-due', text: dueText }));
-  li.appendChild(label);
-  return li;
-}
-
-// Add-reminder modal. Lets the user pick a schedule kind (daily-at,
-// every-N-hours, once-at) and a label. Saves a [REMINDER] envelope note.
-async function openAddReminderDialog(prefill = null) {
-  const theme = getActiveTheme();
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'min-width:20rem;display:flex;flex-direction:column;gap:0.5rem;';
-
-  const labelInput = document.createElement('input');
-  labelInput.type = 'text';
-  labelInput.maxLength = 200;
-  labelInput.placeholder = t('reminder.dialog.labelPlaceholder');
-  labelInput.style.cssText = 'width:100%;font:inherit;background:#0a0d0a;color:#c8e6c9;border:1px solid #1f2a1f;padding:0.4rem;';
-  if (prefill?.label) labelInput.value = prefill.label;
-  wrap.appendChild(labelled(t('reminder.dialog.label'), labelInput));
-
-  // Schedule kind picker.
-  const kindSel = document.createElement('select');
-  for (const k of ['dailyAt', 'everyHours', 'oncesAt']) {
-    const opt = document.createElement('option');
-    opt.value = k;
-    opt.textContent = t(`reminder.dialog.kind.${k}`);
-    if (prefill?.schedule?.kind === k) opt.selected = true;
-    kindSel.appendChild(opt);
-  }
-  wrap.appendChild(labelled(t('reminder.dialog.schedule'), kindSel));
-
-  // Sub-controls per kind.
-  const kindBody = el('div', { style: 'display:flex;flex-direction:column;gap:0.4rem;padding:0.3rem 0.6rem;border-left:2px solid #1f2a1f;' });
-  wrap.appendChild(kindBody);
-
-  const dailyTime = document.createElement('input'); dailyTime.type = 'time';
-  dailyTime.value = prefill?.schedule?.kind === 'dailyAt' ? prefill.schedule.time : '08:00';
-
-  const everyN = document.createElement('input'); everyN.type = 'number'; everyN.min = '1'; everyN.max = '48'; everyN.step = '1';
-  everyN.value = prefill?.schedule?.kind === 'everyHours' ? String(prefill.schedule.n) : '6';
-  const everyAnchor = document.createElement('input'); everyAnchor.type = 'time';
-  everyAnchor.value = prefill?.schedule?.kind === 'everyHours' ? prefill.schedule.anchor : '08:00';
-
-  const onceWhen = document.createElement('input'); onceWhen.type = 'datetime-local';
-  onceWhen.value = prefill?.schedule?.kind === 'oncesAt'
-    ? toLocalDateTimeInput(new Date(prefill.schedule.iso))
-    : toLocalDateTimeInput(new Date(Date.now() + 60 * 60_000));
-
-  function rebuildKindBody() {
-    kindBody.innerHTML = '';
-    if (kindSel.value === 'dailyAt') {
-      kindBody.appendChild(labelled(t('reminder.dialog.kind.dailyAt'), dailyTime));
-    } else if (kindSel.value === 'everyHours') {
-      kindBody.appendChild(labelled(t('reminder.dialog.everyHoursLabel'), everyN));
-      kindBody.appendChild(labelled(t('reminder.dialog.anchorLabel'), everyAnchor));
-    } else if (kindSel.value === 'oncesAt') {
-      kindBody.appendChild(labelled(t('reminder.dialog.kind.oncesAt'), onceWhen));
-    }
-  }
-  rebuildKindBody();
-  kindSel.addEventListener('change', rebuildKindBody);
-
-  const choice = await dialog({
-    titleKey: `reminder.dialog.add.title.${theme}`,
-    content: wrap,
-    actions: [
-      { labelKey: 'reminder.dialog.cancel', value: 'cancel', cancel: true },
-      { labelKey: 'reminder.dialog.save', value: 'save', primary: true, defaultFocus: true },
-    ],
-  });
-  if (choice !== 'save') return;
-
-  const label = labelInput.value.trim();
-  if (!label) { toast('reminder.label.required'); return; }
-  let schedule = null;
-  if (kindSel.value === 'dailyAt') {
-    schedule = { kind: 'dailyAt', time: dailyTime.value };
-  } else if (kindSel.value === 'everyHours') {
-    const n = Number(everyN.value);
-    if (!Number.isFinite(n) || n < 1 || n > 48) { toast('reminder.everyHours.range'); return; }
-    schedule = { kind: 'everyHours', n, anchor: everyAnchor.value };
-  } else if (kindSel.value === 'oncesAt') {
-    const d = new Date(onceWhen.value);
-    if (Number.isNaN(d.getTime())) return;
-    schedule = { kind: 'oncesAt', iso: d.toISOString() };
-  }
-  const r = addReminder({ label, schedule });
-  if (!r.ok) {
-    if (r.error?.errorKey) toast(r.error.errorKey);
-    return;
-  }
-  refresh();
-}
-
-// Manage reminders modal — list active reminders with delete buttons.
-async function openManageRemindersDialog() {
-  const theme = getActiveTheme();
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'min-width:20rem;display:flex;flex-direction:column;gap:0.4rem;';
-  const reminders = getReminders();
-  if (reminders.length === 0) {
-    wrap.appendChild(el('p', {
-      text: t('reminder.list.empty'),
-      style: 'font-size:0.85rem;color:#aac8aa;margin:0.4rem 0;',
-    }));
-  } else {
-    const ol = el('ol', { style: 'list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.3rem;' });
-    for (const rem of reminders) {
-      const li = el('li', { style: 'display:flex;justify-content:space-between;align-items:center;gap:0.4rem;padding:0.4rem;border:1px solid #1f2a1f;border-radius:4px;background:#0a0d0a;' });
-      const left = el('div', { style: 'flex:1 1 auto;min-width:0;' });
-      left.appendChild(el('div', { text: rem.label, style: 'font-weight:600;overflow:hidden;text-overflow:ellipsis;' }));
-      left.appendChild(el('div', { text: describeSchedule(rem.schedule, t), style: 'font-size:0.75rem;color:#aac8aa;' }));
-      li.appendChild(left);
-      li.appendChild(el('button', {
-        type: 'button',
-        className: 'tap',
-        text: '✕',
-        style: 'font-size:0.8rem;color:#ffb84d;border-color:#ffb84d;background:transparent;min-width:36px;min-height:36px;padding:0.2rem 0.5rem;',
-        on: { click: async () => {
-          const ok = await dialog({
-            titleKey: 'reminder.dialog.confirmDelete.title',
-            bodyKey: 'reminder.dialog.confirmDelete.body',
-            actions: [
-              { labelKey: 'reminder.dialog.confirmDelete.cancel', value: 'cancel', cancel: true, defaultFocus: true },
-              { labelKey: 'reminder.dialog.confirmDelete.delete', value: 'del', primary: true },
-            ],
-          });
-          if (ok !== 'del') return;
-          cancelReminder(rem.id);
-          li.remove();
-          refresh();
-        } },
-      }));
-      ol.appendChild(li);
-    }
-    wrap.appendChild(ol);
-  }
-
-  await dialog({
-    titleKey: `reminder.dialog.manage.title.${theme}`,
-    content: wrap,
-    actions: [
-      { labelKey: 'maintenance.dialog.addReminder.plain', value: 'add', primary: true },
-      { labelKey: 'maintenance.dialog.cancel', value: 'cancel', cancel: true, defaultFocus: true },
-    ],
-  }).then((choice) => {
-    if (choice === 'add') openAddReminderDialog();
-  });
 }
 
 // CONTACT modal. Single button → modal with two confirms (PORT, STARBOARD)
@@ -675,34 +317,49 @@ function toLocalDateTimeInput(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function toLocalTimeInput(d) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 // @req FR-20
 // @req FR-21
 // @req FR-22
 // @req FR-23
 // @req FR-24
-function renderLastContact(theme, state) {
-  const wrap = el('section', { className: 'last-contact', aria: { label: t(`lastContact.title.${theme}`) } });
-  wrap.appendChild(el('h2', { text: t(`lastContact.title.${theme}`) }));
+// @req FR-35
+// @req FR-37
+// @req FR-38
+// @req FR-39
+// @req FR-40
+// @req FR-41
+// @req FR-94
+// @req FR-95
+// @req FR-99
+// @req FR-100
+//
+// LAST CONTACT / NEXT VECTOR are paired in one panel — the user reads
+// "what just happened, what's next" as a single thought.
+function renderStatus(theme, state) {
+  const wrap = el('section', { className: 'status-panel', aria: { label: t(`lastContact.title.${theme}`) } });
+  wrap.appendChild(renderLastCol(theme, state));
+  wrap.appendChild(renderNextCol(theme, state));
+  return wrap;
+}
+
+function renderLastCol(theme, state) {
+  const col = el('div', { className: 'status-col status-col-last' });
+  col.appendChild(el('h2', { text: t(`lastContact.title.${theme}`) }));
   const lastFeed = state.events.filter((e) => e.type === 'feed').slice(-1)[0];
   if (!lastFeed) {
-    wrap.appendChild(el('p', { text: t(`lastContact.empty.${theme}`) }));
-    return wrap;
+    col.appendChild(el('p', { text: t(`lastContact.empty.${theme}`) }));
+    return col;
   }
   const sideKey = lastFeed.side === 'port'
     ? `lastContact.side.port.${theme}`
     : `lastContact.side.starboard.${theme}`;
   const time = formatHm(new Date(lastFeed.timestamp));
-  wrap.appendChild(el('p', { text: `${t(sideKey)} · ${time}` }));
-  wrap.appendChild(el('p', { className: 'relative', text: relativeTimeString(new Date(lastFeed.timestamp)) }));
+  col.appendChild(el('p', { className: 'status-primary', text: `${t(sideKey)} · ${time}` }));
+  col.appendChild(el('p', { className: 'relative', text: relativeTimeString(new Date(lastFeed.timestamp)) }));
   if (lastFeed.durationMin != null) {
-    wrap.appendChild(el('p', { text: t('lastContact.duration', { n: lastFeed.durationMin }) }));
+    col.appendChild(el('p', { className: 'status-detail', text: t('lastContact.duration', { n: lastFeed.durationMin }) }));
   }
-  return wrap;
+  return col;
 }
 
 function relativeTimeString(then, now = new Date()) {
@@ -890,24 +547,14 @@ function badge(label, n) {
   return b;
 }
 
-// @req FR-35
-// @req FR-37
-// @req FR-38
-// @req FR-39
-// @req FR-40
-// @req FR-41
-// @req FR-94
-// @req FR-95
-// @req FR-99
-// @req FR-100
-function renderNextVector(theme, state) {
-  const wrap = el('section', { className: 'next-vector' });
-  wrap.appendChild(el('h2', { text: t(`vector.title.${theme}`) }));
+function renderNextCol(theme, state) {
+  const col = el('div', { className: 'status-col status-col-next' });
+  col.appendChild(el('h2', { text: t(`vector.title.${theme}`) }));
   const inEmcon = isEmcon();
 
   const feed = predictFeed(state.events, new Date(), { isEmcon: inEmcon });
   if (feed.status === 'insufficient') {
-    wrap.appendChild(el('p', { text: t(feed.subLabelKey, { n: feed.missing }) }));
+    col.appendChild(el('p', { className: 'status-detail', text: t(feed.subLabelKey, { n: feed.missing }) }));
   } else {
     // When overdue, show the original (un-projected) centre alongside the
     // "DUE NOW" tag. The reprojected centre is a forward-looking hint that
@@ -915,25 +562,25 @@ function renderNextVector(theme, state) {
     // it with "DUE NOW" reads contradictory.
     const displayCentre = feed.status === 'overdue' ? feed.originalCentre : feed.centre;
     const time = formatHm(displayCentre);
-    const main = el('p', { text: t('vector.feeding', { time, band: feed.band }) });
-    if (feed.status === 'overdue') main.appendChild(el('span', { text: ' — ' + t('vector.overdue') }));
+    const main = el('p', { className: 'status-primary', text: t('vector.feeding', { time, band: feed.band }) });
+    if (feed.status === 'overdue') main.appendChild(el('span', { className: 'status-tag', text: ' — ' + t('vector.overdue') }));
     if (feed.status === 'stale') main.style.opacity = '0.6';
-    wrap.appendChild(main);
-    wrap.appendChild(el('small', { text: t(feed.subLabelKey) + (feed.imported ? ' ' + t('vector.imported') : '') }));
-    if (feed.status === 'stale') wrap.appendChild(el('p', { text: t('vector.stale') }));
+    col.appendChild(main);
+    col.appendChild(el('small', { text: t(feed.subLabelKey) + (feed.imported ? ' ' + t('vector.imported') : '') }));
+    if (feed.status === 'stale') col.appendChild(el('p', { className: 'status-detail', text: t('vector.stale') }));
   }
 
-  for (const dtype of ['wet', 'dirty']) {
-    const d = predictDiaper(state.events, dtype, new Date(), { isEmcon: inEmcon });
-    if (d.status === 'insufficient') {
-      wrap.appendChild(el('p', { text: t(d.subLabelKey, { n: d.missing }) }));
-    } else {
-      const time = formatHm(d.centre);
-      wrap.appendChild(el('p', { text: t(d.titleKey, { time, band: d.band }) }));
-      wrap.appendChild(el('small', { text: t(d.branchLabelKey) + (d.imported ? ' ' + t('vector.imported') : '') }));
-    }
+  // Only the next-ordnance prediction is shown; the wet/jettison
+  // prediction is suppressed (low signal vs. visual noise).
+  const d = predictDiaper(state.events, 'dirty', new Date(), { isEmcon: inEmcon });
+  if (d.status === 'insufficient') {
+    col.appendChild(el('p', { className: 'status-detail', text: t(d.subLabelKey, { n: d.missing }) }));
+  } else {
+    const time = formatHm(d.centre);
+    col.appendChild(el('p', { className: 'status-secondary', text: t(d.titleKey, { time, band: d.band }) }));
+    col.appendChild(el('small', { text: t(d.branchLabelKey) + (d.imported ? ' ' + t('vector.imported') : '') }));
   }
-  return wrap;
+  return col;
 }
 
 // @req FR-74
@@ -1046,45 +693,6 @@ function evaluateBackupBanner(state) {
 async function triggerExport() {
   const { exportAndDownload } = await import('../app.js');
   exportAndDownload();
-}
-
-async function openWeightDialog() {
-  const wrap = el('div');
-  // Both fields independently optional; at least one required (see
-  // events.js logWeight).  Empty inputs → field omitted from event.
-  const wInput = el('input', { type: 'number', step: '0.05' });
-  wInput.placeholder = '—';
-  const lInput = el('input', { type: 'number', step: '0.5' });
-  lInput.placeholder = '—';
-  // Time-only picker (FR-11).  resolveTimeOnly wraps to yesterday if
-  // the chosen time is in the future-of-today; rejects > 24h ago.
-  const tInput = el('input', { type: 'time' });
-  tInput.value = toLocalTimeInput(new Date());
-  wrap.appendChild(labelled(t('weight.weightLabel'), wInput));
-  wrap.appendChild(labelled(t('weight.lengthLabel'), lInput));
-  wrap.appendChild(labelled(t('weight.timeLabel'), tInput));
-  const choice = await dialog({
-    titleKey: 'loadAction.weight.themed',
-    content: wrap,
-    actions: [
-      { labelKey: 'feeding.cancel', value: 'cancel', cancel: true },
-      { labelKey: 'weight.confirm', value: 'ok', primary: true, defaultFocus: true },
-    ],
-  });
-  if (choice !== 'ok') return;
-  const tsCheck = resolveTimeOnly(tInput.value, new Date());
-  if (!tsCheck.ok) { toast(tsCheck.errorKey ?? 'time.notFuture'); return; }
-  const r = logWeight({
-    weightKg: wInput.value,
-    lengthCm: lInput.value,
-    when: tsCheck.value,
-  });
-  if (!r.ok) {
-    if (r.error?.errorKey) toast(r.error.errorKey);
-    return;
-  }
-  toast('event.confirm.weight', { time: formatHm(new Date(r.value.timestamp)) });
-  refresh();
 }
 
 function labelled(labelText, control) {

@@ -14,12 +14,14 @@ import { toast, banner, removeBanner, notifyStorageEventForDestructiveModals, _r
 import { showPreflight } from './views/preflight.js';
 import { showEmconBanner, hideEmconBanner } from './views/emcon_view.js';
 import { buildCsv, exportFilename, triggerDownload } from './csv.js';
+import { start as startTabnav } from './tabnav.js';
 
 const viewModules = {
-  [ROUTES.STATION]: () => import('./views/station.js?v=2'),
-  [ROUTES.LOG]: () => import('./views/log.js?v=2'),
-  [ROUTES.SETTINGS]: () => import('./views/settings.js?v=2'),
-  [ROUTES.REPORT]: () => import('./views/report.js?v=2'),
+  [ROUTES.STATION]: () => import('./views/station.js?v=5'),
+  [ROUTES.MAINTENANCE]: () => import('./views/maintenance.js?v=1'),
+  [ROUTES.LOG]: () => import('./views/log.js?v=6'),
+  [ROUTES.SETTINGS]: () => import('./views/settings.js?v=3'),
+  [ROUTES.REPORT]: () => import('./views/report.js?v=3'),
 };
 
 let currentUnmount = null;
@@ -131,6 +133,9 @@ export async function boot({ root, urlSearchParams = new URLSearchParams(locatio
     if (isEmcon()) showEmconBanner();
     else hideEmconBanner();
   });
+
+  // Persistent tab bar (Station / Maintenance / Mission Log / Report / Settings).
+  startTabnav();
 
   // FR-58: pre-flight on first run.
   if (!isEmcon()) {

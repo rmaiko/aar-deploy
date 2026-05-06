@@ -27,7 +27,7 @@
                  form-action 'none';
                  manifest-src 'none'" />
 
-  <link rel="stylesheet" href="css/main.css?v=2" />
+  <link rel="stylesheet" href="css/main.css?v=6" />
   <link rel="stylesheet" href="css/motion.css?v=1" />
   <link rel="stylesheet" href="css/contrast.css?v=1" />
   <link rel="stylesheet" href="css/print.css?v=1" media="print" />
@@ -61,11 +61,12 @@
   </script>
 </head>
 <body>
+  <nav id="tabnav" role="tablist" aria-label="Primary"></nav>
   <main id="app" role="main"></main>
 
   <!-- Vendored lz-string (ADR-013) — classic script so window.LZString is
        defined before js/app.js evaluates. -->
   <script src="js/vendor/lz-string-1.4.4.min.js?v=1"></script>
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/app.js?v=6"></script>
 </body>
 </html>

@@ -88,12 +88,6 @@ function section(title, body) {
 function renderHeader(theme) {
   const wrap = el('header', { className: 'settings-header' });
   wrap.appendChild(el('h1', { text: t(`settings.title.${theme}`) }));
-  wrap.appendChild(el('button', {
-    type: 'button',
-    className: 'tap nav-back',
-    text: t('nav.return'),
-    on: { click: () => navigate(ROUTES.STATION) },
-  }));
   return wrap;
 }
 

@@ -3,8 +3,6 @@
 import { t } from '../i18n.js';
 import { getState, dispatch } from '../state.js';
 import { writeState } from '../storage.js';
-import { navigate } from '../router.js';
-import { ROUTES } from '../config.js';
 import { weightLengthCharts } from './charts.js';
 
 let mountEl = null;
@@ -67,12 +65,6 @@ function renderSelector(state) {
   if (activeWindow === 'sinceVisit' && !state.lastVisitDate) {
     wrap.appendChild(el('p', { text: t('report.guardSetVisit') }));
   }
-  wrap.appendChild(el('button', {
-    type: 'button',
-    className: 'tap nav-back',
-    text: t('report.back'),
-    on: { click: () => navigate(ROUTES.LOG) },
-  }));
   return wrap;
 }
 
