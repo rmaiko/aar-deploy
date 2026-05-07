@@ -312,6 +312,15 @@ small { color: var(--fg-dim); font-size: 0.75rem; }
 }
 .log-table .log-day-today td { color: var(--warn); }
 
+/* Recent-activity table on the Loadmaster screen reuses .log-table but
+   sits inside a panel (not at the page top), so the sticky header is
+   off and rows are tappable to open the edit dialog. */
+.recent-table thead th { position: static; top: auto; }
+.recent-table .recent-entry { cursor: pointer; }
+.recent-table .recent-entry:hover td,
+.recent-table .recent-entry:focus-visible td { background: rgba(127, 255, 127, 0.06); }
+.recent-table .recent-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 /* Plain-theme overrides */
 html[data-theme="plain"] { --accent: #5fb05f; }
 

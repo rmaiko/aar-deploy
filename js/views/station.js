@@ -391,9 +391,9 @@ function renderToday(theme, state) {
 }
 
 // Recent activity panel — shows the events from the last 24h, reverse-
-// chronological, with a tap-through to the full Mission Log.  Helps
-// parents quickly check "what was the last few things logged" without
-// navigating away from the station.
+// chronological, with a tap-through to the full Mission Log. Rendered
+// as the same table shape as the Mission Log (day-divider rows + Time
+// / Type / Details columns) so the two views stay visually aligned.
 function renderRecent(theme, state) {
   const wrap = el('section', { className: 'recent-activity' });
   wrap.appendChild(el('h2', { text: t(`recent.title.${theme}`) }));
@@ -409,9 +409,7 @@ function renderRecent(theme, state) {
     wrap.appendChild(el('p', { text: t(`recent.empty.${theme}`), style: 'font-size:0.8rem;color:#aac8aa;' }));
     return wrap;
   }
-  const list = el('ol', { className: 'recent-list', style: 'list-style:none;padding:0;margin:0.4rem 0;' });
-  for (const ev of recent) list.appendChild(renderRecentEntry(ev, theme));
-  wrap.appendChild(list);
+  wrap.appendChild(renderRecentTable(recent, theme));
   wrap.appendChild(el('p', { text: t('recent.editHint'), style: 'font-size:0.7rem;color:#aac8aa;margin-top:0.2rem;' }));
   if (state.events.length > recent.length) {
     wrap.appendChild(el('button', {
@@ -425,34 +423,77 @@ function renderRecent(theme, state) {
   return wrap;
 }
 
-function renderRecentEntry(ev, theme) {
-  const li = el('li', { className: 'recent-entry' });
-  const btn = el('button', {
-    type: 'button',
-    className: 'recent-entry-btn',
-    style: 'display:flex;justify-content:space-between;gap:0.5rem;width:100%;padding:0.4rem 0.3rem;background:transparent;border:0;border-bottom:1px solid #1f2a1f;text-align:left;cursor:pointer;color:inherit;font:inherit;',
-    on: { click: () => openEditDialog(ev) },
+function renderRecentTable(entries, theme) {
+  const table = el('table', { className: 'log-table recent-table' });
+  const thead = el('thead');
+  const trh = el('tr');
+  trh.appendChild(el('th', { className: 'log-time-th', text: t('log.col.time') }));
+  trh.appendChild(el('th', { className: 'log-type-th', text: t('log.col.type') }));
+  trh.appendChild(el('th', { className: 'log-details-th', text: t('log.col.details') }));
+  thead.appendChild(trh);
+  table.appendChild(thead);
+
+  const tbody = el('tbody');
+  const todayKey = dayKey(new Date());
+  const dayFmt = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
   });
-  const left = el('span', { style: 'flex:1 1 auto;min-width:0;' });
-  left.appendChild(el('strong', { text: labelForEvent(ev, theme) }));
-  if (ev.type === 'feed' && ev.durationMin != null) {
-    left.appendChild(document.createTextNode(' · '));
-    left.appendChild(el('span', { text: t('log.entry.duration', { n: ev.durationMin }) }));
+  let lastDay = null;
+  for (const ev of entries) {
+    const ts = new Date(ev.timestamp);
+    const dk = dayKey(ts);
+    if (dk !== lastDay) {
+      const tr = el('tr', {
+        className: 'log-day-divider' + (dk === todayKey ? ' log-day-today' : ''),
+      });
+      tr.appendChild(el('td', { attrs: { colspan: '3' }, text: dayFmt.format(ts) }));
+      tbody.appendChild(tr);
+      lastDay = dk;
+    }
+    tbody.appendChild(buildRecentRow(ev, theme, ts));
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+function buildRecentRow(ev, theme, ts) {
+  const tr = el('tr', {
+    className: 'log-row log-row-event recent-entry',
+    attrs: { tabindex: '0', role: 'button' },
+    on: {
+      click: () => openEditDialog(ev),
+      keydown: (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openEditDialog(ev);
+        }
+      },
+    },
+  });
+  tr.appendChild(el('td', { className: 'log-time', text: formatHm(ts) }));
+  // Mirror Mission Log: feeds collapse to a generic CONTACT/Feed type
+  // and push the side (port/starboard) into the Details column so the
+  // Type column stays compact.
+  const typeKey = ev.type === 'feed'
+    ? `loadAction.contact.${theme}`
+    : `log.entry.${ev.type}.${theme}`;
+  tr.appendChild(el('td', { className: 'log-type', text: t(typeKey) }));
+  const parts = [];
+  if (ev.type === 'feed') {
+    parts.push(t(`lastContact.side.${ev.side === 'port' ? 'port' : 'starboard'}.${theme}`));
+    if (ev.durationMin != null) parts.push(t('log.entry.duration', { n: ev.durationMin }));
   }
   if (ev.type === 'weight') {
-    left.appendChild(document.createTextNode(' · '));
-    left.appendChild(el('span', { text: t('log.entry.weightDetail', { kg: ev.weightKg, cm: ev.lengthCm }) }));
+    parts.push(t('log.entry.weightDetail', { kg: ev.weightKg, cm: ev.lengthCm }));
   }
-  if (ev.notes) {
-    left.appendChild(el('div', { text: '✎ ' + ev.notes, style: 'font-size:0.75rem;color:#aac8aa;margin-top:0.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' }));
-  }
-  btn.appendChild(left);
-  const right = el('span', { style: 'color:#aac8aa;font-variant-numeric:tabular-nums;white-space:nowrap;flex:0 0 auto;' });
-  const ts = new Date(ev.timestamp);
-  right.textContent = `${formatHm(ts)} · ${relativeTimeString(ts)}`;
-  btn.appendChild(right);
-  li.appendChild(btn);
-  return li;
+  if (ev.notes) parts.push('✎ ' + ev.notes);
+  tr.appendChild(el('td', { className: 'log-details', text: parts.join(' · ') }));
+  return tr;
+}
+
+function dayKey(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 // Edit-entry dialog. Per-type fields + free-form notes.
